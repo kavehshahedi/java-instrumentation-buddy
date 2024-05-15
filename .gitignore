@@ -1,0 +1,7 @@
+/target/
+/.vscode/
+/output/
+
+*.log
+
+dependency-reduced-pom.xml
