@@ -11,21 +11,19 @@ for line in data:
     # This regex will be used to extract the duration, method name, method params, and method return type
     # The format is [duration] method_name (method_params) method_return_type
     # Example: [29300] ENTER|EXIT com.package.class.method (params) int
-    regex = re.compile(r'\[(\d+)\] (ENTER|EXIT) ([\w\W.]+) \(([\w\W, ]*)\) ([\w\W]+)')
+    regex = re.compile(r'\[(\d+)\] (ENTER|EXIT) ([\w\W\s.]+)')
     match = regex.match(line)
 
     # If the regex matches the line, extract the data
     if match:
         timestamp = int(match.group(1))
         eventType = match.group(2)
-        method_name = match.group(3)
-        method_params = match.group(4)
-        method_return_type = match.group(5).strip()
+        method = match.group(3).strip()
 
         output.append({
             'ts': timestamp,
             'ph': 'B' if eventType == 'ENTER' else 'E',
-            'name': f'{method_name}({method_params}) {method_return_type}'
+            'name': f'{method}'
         })
     else:
         print(f'No match: {line}')
