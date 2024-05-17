@@ -60,3 +60,62 @@ After the instrumentation, the agent will store all the logs in a single file. E
 [357745850607200] EXIT private static java.lang.String com.your.company.Main.doNothing(java.lang.String)
 [357745850990400] EXIT public static void com.your.company.Main.main(java.lang.String[])
 ```
+
+### Analysis with Trace Compass
+*Background: [Eclipse Trace Compass™](https://eclipse.dev/tracecompass) is an open source application to solve performance and reliability issues by reading and analyzing logs or traces of a system. Its goal is to provide views, graphs, metrics, and more to help extract useful information from traces, in a way that is more user-friendly and informative than huge text dumps.*
+
+If you want to import the collected instrumentation logs in Trace Compass, you can use the `trace_formatter.py` script to re-format the log files, and generate a Trace Compass readable json file.
+
+**Structure:**
+```console
+python trace_formatter.py [-h] [--batch_size BATCH_SIZE] input output
+```
+**Example:**
+```console
+python trace_formatter.py ./logs/customData.log ./traces/customData.json
+```
+**Output:**
+```json
+[{
+    "ts": 357745830874300,
+    "ph": "B",
+    "name": "public static void com.your.company.Main.main(java.lang.String[])"
+},
+{
+    "ts": 357745848404300,
+    "ph": "B",
+    "name": "private static java.lang.String com.your.company.Main.doNothing(java.lang.String)"
+},
+{
+    "ts": 357745848613100,
+    "ph": "B",
+    "name": "private static void com.your.company.Main.doSomethingMultipleTimes(int,float)"
+},
+{
+    "ts": 357745849231200,
+    "ph": "E",
+    "name": "private static void com.your.company.Main.doSomethingMultipleTimes(int,float)"
+},
+{
+    "ts": 357745850023300,
+    "ph": "B",
+    "name": "private static void com.your.company.Main.doSomethingMultipleTimes(int,float)"
+},
+{
+    "ts": 357745850443300,
+    "ph": "E",
+    "name": "private static void com.your.company.Main.doSomethingMultipleTimes(int,float)"
+},
+{
+    "ts": 357745850607200,
+    "ph": "E",
+    "name": "private static java.lang.String com.your.company.Main.doNothing(java.lang.String)"
+},
+{
+    "ts": 357745850990400,
+    "ph": "E",
+    "name": "public static void com.your.company.Main.main(java.lang.String[])"
+}]
+```
+
+You can see [**this video tutorial on Youtube**](https://www.youtube.com/watch?v=YCdzmcpOrK4) to see how to import the generated json file in Trace Compass.
