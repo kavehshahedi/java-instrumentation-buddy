@@ -1,33 +1,59 @@
 import json
 import os
 import re
+import argparse
 
-with open('method_logs.log', 'r') as f:
-    data = f.readlines()
+REGEX = re.compile(r'\[(\d+)\] (ENTER|EXIT) ([\w\W\s.]+)')
 
-output = []
-for line in data:
-    # Make a regex with the pattern of the data
-    # This regex will be used to extract the duration, method name, method params, and method return type
-    # The format is [duration] method_name (method_params) method_return_type
-    # Example: [29300] ENTER|EXIT com.package.class.method (params) int
-    regex = re.compile(r'\[(\d+)\] (ENTER|EXIT) ([\w\W\s.]+)')
-    match = regex.match(line)
-
-    # If the regex matches the line, extract the data
+def process_line(line):
+    match = REGEX.match(line)
     if match:
         timestamp = int(match.group(1))
         eventType = match.group(2)
-        method = match.group(3).strip()
-
-        output.append({
+        method_signature = match.group(3).strip()
+        return {
             'ts': timestamp,
             'ph': 'B' if eventType == 'ENTER' else 'E',
-            'name': f'{method}'
-        })
+            'name': method_signature
+        }
     else:
         print(f'No match: {line}')
+        return None
 
-# Write the sorted methods to a JSON file
-with open('trace.json', 'w') as f:
-    json.dump(output, f, indent=4)
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('input', help='Input file')
+    parser.add_argument('output', help='Output file')
+    parser.add_argument('--batch_size', type=int, default=1000, help='Number of lines to process in each batch')
+    args = parser.parse_args()
+    
+    with open(args.input, 'r') as f, open(args.output, 'w') as out_f:
+        out_f.write('[\n')  # Start of JSON array
+        
+        batch = []
+        first = True
+
+        for line in f:
+            result = process_line(line)
+            if result:
+                batch.append(result)
+                
+                if len(batch) >= args.batch_size:
+                    if not first:
+                        out_f.write(',\n')
+                    else:
+                        first = False
+
+                    out_f.write(',\n'.join(json.dumps(item, indent=4) for item in batch))
+                    batch.clear()
+        
+        # Write any remaining items in the batch
+        if batch:
+            if not first:
+                out_f.write(',\n')
+            out_f.write(',\n'.join(json.dumps(item, indent=4) for item in batch))
+        
+        out_f.write('\n]')  # End of JSON array
+
+if __name__ == '__main__':
+    main()
