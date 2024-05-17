@@ -18,6 +18,13 @@ public class FunctionEntryAgent {
 
     public static boolean onlyCheckVisited = false;
     public static String logFileName = "logs.log";
+    
+    public static final long TIME_OFFSET;
+    static {
+        long currentTimeMillis = System.currentTimeMillis();
+        long currentNanoTime = System.nanoTime();
+        TIME_OFFSET = (currentTimeMillis * 1_000_000) - currentNanoTime;
+    }
 
     public static void premain(String args, Instrumentation inst) throws SecurityException, IOException {
         String targetPackage = "";
@@ -71,6 +78,10 @@ public class FunctionEntryAgent {
         logger = LogManager.getLogger(FunctionEntryAgent.class);
     }
 
+    public static long getTimeNanoSeconds() {
+        return System.nanoTime() + TIME_OFFSET;
+    }
+
     public static class MethodExecutionTime {
         public static final Set<String> visitedMethods = new java.util.HashSet<String>();
 
@@ -98,7 +109,7 @@ public class FunctionEntryAgent {
 
         public static void logTime(String methodSignature, String type) {
             String message = String.format(LOG_PATTERN,
-                    System.nanoTime(),
+                    getTimeNanoSeconds(),
                     type,
                     methodSignature);
 
