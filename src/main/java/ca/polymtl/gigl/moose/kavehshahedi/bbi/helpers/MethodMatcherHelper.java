@@ -1,6 +1,9 @@
 package ca.polymtl.gigl.moose.kavehshahedi.bbi.helpers;
 
+import ca.polymtl.gigl.moose.kavehshahedi.bbi.FunctionEntryAgent;
+import ca.polymtl.gigl.moose.kavehshahedi.bbi.models.Configuration;
 import net.bytebuddy.description.method.MethodDescription;
+import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
 
@@ -9,11 +12,12 @@ import java.util.List;
 
 public class MethodMatcherHelper {
 
-    public static ElementMatcher.Junction<MethodDescription> createMethodMatcher(
-            List<String> instrumentMethodSignatures, List<String> ignoreMethodSignatures) {
+    public static ElementMatcher.Junction<MethodDescription> createMethodMatcher(Configuration.Instrumentation instrumentation) {
+        List<String> instrumentMethodSignatures = instrumentation.getTargetMethods().getInstrument();
+        List<String> ignoreMethodSignatures = instrumentation.getTargetMethods().getIgnore();
 
         ElementMatcher.Junction<MethodDescription> methodMatchers = ElementMatchers.none();
-        if (instrumentMethodSignatures.size() == 0)
+        if (instrumentMethodSignatures.isEmpty())
             methodMatchers = ElementMatchers.isMethod();
 
         for (String signature : instrumentMethodSignatures) {
@@ -31,6 +35,22 @@ public class MethodMatcherHelper {
         }
 
         return methodMatchers;
+    }
+
+    public static ElementMatcher.Junction<TypeDescription> createTargetPackageMatcher(Configuration.Instrumentation instrumentation) {
+        ElementMatcher.Junction<TypeDescription> targetPackageMatcher = ElementMatchers.any();
+        if (!instrumentation.getTargetPackage().isEmpty()
+                && !instrumentation.getTargetPackage().equals("*")) {
+            targetPackageMatcher = ElementMatchers.nameStartsWith(instrumentation.getTargetPackage());
+        }
+
+        // Exclude the agent class from instrumentation (along with logging and other)
+        targetPackageMatcher = targetPackageMatcher
+                .and(ElementMatchers.not(ElementMatchers.nameStartsWith(FunctionEntryAgent.class.getPackageName())));
+        targetPackageMatcher = targetPackageMatcher
+                .and(ElementMatchers.not(ElementMatchers.nameStartsWith("org.apache.logging.log4j")));
+
+        return targetPackageMatcher;
     }
 
     private static ElementMatcher.Junction<MethodDescription> createMatcherFromSignature(
@@ -62,15 +82,15 @@ public class MethodMatcherHelper {
         return matcher;
     }
 
-    static class MethodSignature {
-        private String methodName;
-        private String declaringClass;
-        private int numArguments;
-        private boolean isStatic;
-        private boolean isPublic;
-        private boolean isPrivate;
-        private boolean isProtected;
-        private boolean isPackagePrivate;
+    private static class MethodSignature {
+        private final String methodName;
+        private final String declaringClass;
+        private final int numArguments;
+        private final boolean isStatic;
+        private final boolean isPublic;
+        private final boolean isPrivate;
+        private final boolean isProtected;
+        private final boolean isPackagePrivate;
 
         public MethodSignature(String methodName, String declaringClass, int numArguments, boolean isStatic,
                 boolean isPublic,

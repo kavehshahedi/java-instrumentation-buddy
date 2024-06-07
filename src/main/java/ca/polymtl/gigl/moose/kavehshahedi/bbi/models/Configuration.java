@@ -4,6 +4,11 @@ import java.util.Collections;
 import java.util.List;
 
 public class Configuration {
+
+    // Constants
+    public static final String DEFAULT_LOGGING_LEVEL = "INFO";
+    public static final String DEFAULT_LOG_FILE = "app.log";
+
     private Logging logging = new Logging();
     private Instrumentation instrumentation = new Instrumentation();
 
@@ -32,55 +37,67 @@ public class Configuration {
         this.instrumentation = instrumentation != null ? instrumentation : new Instrumentation();
     }
 
+    @Override
+    public String toString() {
+        return "Instrumentation Configuration:\n\tLogging:\n" + logging.toString() + "\n\tInstrumentation:\n" + instrumentation.toString();
+    }
+
     public static class Logging {
-        private String level = "INFO"; // Default logging level
-        private String file = "app.log"; // Default log file
+        private String level = DEFAULT_LOGGING_LEVEL;
+        private String file = DEFAULT_LOG_FILE;
 
         public Logging() {
         }
 
         public Logging(String level, String file) {
-            this.level = level != null ? level : "INFO";
-            this.file = file != null ? file : "app.log";
+            this.level = level != null ? level : DEFAULT_LOGGING_LEVEL;
+            this.file = file != null ? file : DEFAULT_LOG_FILE;
         }
     
         // Getters and setters
         public String getLevel() {
-            return level != null ? level : "INFO";
+            return level != null ? level : DEFAULT_LOGGING_LEVEL;
         }
     
         public void setLevel(String level) {
-            this.level = level != null ? level : "INFO";
+            this.level = level != null ? level : DEFAULT_LOGGING_LEVEL;
         }
     
         public String getFile() {
-            return file != null ? file : "app.log";
+            return file != null ? file : DEFAULT_LOG_FILE;
         }
     
         public void setFile(String file) {
-            this.file = file != null ? file : "app.log";
+            this.file = file != null ? file : DEFAULT_LOG_FILE;
+        }
+
+        @Override
+        public String toString() {
+            return "\t\tLevel: " + level + "\n\t\tFile: " + file;
         }
     }
 
     public static class Instrumentation {
-        private String targetPackage = ""; // Default target package
+        private String targetPackage = "*"; // Default target package
         private TargetMethods targetMethods = new TargetMethods();
+        private boolean onlyCheckVisited = false;
 
         public Instrumentation() {
         }
 
-        public Instrumentation(String targetPackage, TargetMethods targetMethods) {
+        public Instrumentation(String targetPackage, TargetMethods targetMethods, boolean checkOnlyVisited) {
             this.targetPackage = targetPackage != null ? targetPackage : "";
             this.targetMethods = targetMethods != null ? targetMethods : new TargetMethods();
+            this.onlyCheckVisited = checkOnlyVisited;
         }
 
         // Getters and setters
         public String getTargetPackage() {
-            return targetPackage != null ? targetPackage : "";
+            return targetPackage != null ? targetPackage : "*";
         }
     
         public void setTargetPackage(String targetPackage) {
-            this.targetPackage = targetPackage != null ? targetPackage : "";
+            this.targetPackage = targetPackage != null ? targetPackage : "*";
         }
     
         public TargetMethods getTargetMethods() {
@@ -89,6 +106,19 @@ public class Configuration {
     
         public void setTargetMethods(TargetMethods targetMethods) {
             this.targetMethods = targetMethods != null ? targetMethods : new TargetMethods();
+        }
+
+        public boolean isOnlyCheckVisited() {
+            return onlyCheckVisited;
+        }
+
+        public void setOnlyCheckVisited(boolean onlyCheckVisited) {
+            this.onlyCheckVisited = onlyCheckVisited;
+        }
+
+        @Override
+        public String toString() {
+            return "\t\tTarget Package: " + targetPackage + "\n\t\tOnly Check Visited: " + onlyCheckVisited + "\n\t\tTarget Methods: " + targetMethods.toString();
         }
     
         public static class TargetMethods {
@@ -118,6 +148,24 @@ public class Configuration {
         
             public void setIgnore(List<String> ignore) {
                 this.ignore = ignore != null ? ignore : Collections.emptyList();
+            }
+
+            @Override
+            public String toString() {
+                StringBuilder output = new StringBuilder();
+                output.append("\n\t\t\tInstrument:");
+                output.append(instrument.isEmpty() ? " *\n" : "\n");
+                for (String method : instrument) {
+                    output.append("\t\t\t\t- ").append(method).append("\n");
+                }
+
+                output.append("\t\t\tIgnore:");
+                output.append(ignore.isEmpty() ? " N/A\n" : "\n");
+                for (String method : ignore) {
+                    output.append("\t\t\t\t- ").append(method).append("\n");
+                }
+
+                return output.toString().stripTrailing();
             }
         }
     }

@@ -2,6 +2,7 @@
 /.vscode/
 /output/
 /.settings/
+/.idea/
 
 *.log
 
