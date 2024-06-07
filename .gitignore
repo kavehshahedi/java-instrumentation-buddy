@@ -1,6 +1,7 @@
 /target/
 /.vscode/
 /output/
+/.settings/
 
 *.log
 

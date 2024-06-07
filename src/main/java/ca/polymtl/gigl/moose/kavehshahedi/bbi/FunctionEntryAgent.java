@@ -2,23 +2,38 @@ package ca.polymtl.gigl.moose.kavehshahedi.bbi;
 
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
+import net.bytebuddy.description.method.MethodDescription;
+import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.lang.instrument.Instrumentation;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.Constructor;
+import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
+
+import ca.polymtl.gigl.moose.kavehshahedi.bbi.helpers.MethodMatcherHelper;
+import ca.polymtl.gigl.moose.kavehshahedi.bbi.models.Configuration;
 
 public class FunctionEntryAgent {
 
     public static Logger logger;
 
     public static boolean onlyCheckVisited = false;
-    public static String logFileName = "logs.log";
-    
+
     public static final long TIME_OFFSET;
     static {
         long currentTimeMillis = System.currentTimeMillis();
@@ -27,7 +42,9 @@ public class FunctionEntryAgent {
     }
 
     public static void premain(String args, Instrumentation inst) throws SecurityException, IOException {
-        String targetPackage = "";
+        Configuration config = new Configuration(new Configuration.Logging("fine", "logs.log"),
+                new Configuration.Instrumentation(
+                        "", new Configuration.Instrumentation.TargetMethods(new ArrayList<>(), new ArrayList<>())));
 
         String options[];
         if (args != null && args.length() > 0) {
@@ -39,18 +56,17 @@ public class FunctionEntryAgent {
                         String value = option.split("=")[1];
 
                         switch (key) {
-                            case "package":
-                                targetPackage = value;
-                                break;
+                            case "config":
+                                Constructor constructor = new Constructor(Configuration.class, new LoaderOptions());
+                                Yaml yaml = new Yaml(constructor);
+                                try (InputStreamReader reader = new InputStreamReader(
+                                        new FileInputStream(new File(value)))) {
+                                    config = yaml.load(reader);
+                                } catch (IOException e) {
+                                    System.err.println("Error reading the configuration file");
+                                }
 
-                            case "onlyCheckVisited":
-                                onlyCheckVisited = Boolean.parseBoolean(value);
                                 break;
-
-                            case "logFileName":
-                                logFileName = value;
-                                break;
-
                             default:
                                 break;
                         }
@@ -59,18 +75,41 @@ public class FunctionEntryAgent {
             }
         }
 
-        configureLoggerName(logFileName);
+        configureLoggerName(config.getLogging());
+
+        ElementMatcher.Junction<TypeDescription> targetPackageMatcher = ElementMatchers.any();
+        if (!config.getInstrumentation().getTargetPackage().isEmpty()
+                && !config.getInstrumentation().getTargetPackage().equals("*")) {
+            targetPackageMatcher = ElementMatchers.nameStartsWith(config.getInstrumentation().getTargetPackage());
+        }
+
+        // Exclude the agent class from instrumentation (along with logging and other)
+        targetPackageMatcher = targetPackageMatcher
+                .and(ElementMatchers.not(ElementMatchers.nameStartsWith(FunctionEntryAgent.class.getPackageName())));
+        targetPackageMatcher = targetPackageMatcher
+                .and(ElementMatchers.not(ElementMatchers.nameStartsWith("org.apache.logging.log4j")));
+
+        List<String> instrumentMethodSignatures = config.getInstrumentation().getTargetMethods().getInstrument();
+        List<String> ignoreMethodSignatures = config.getInstrumentation().getTargetMethods().getIgnore();
+
+        ElementMatcher.Junction<MethodDescription> methodMatchers = MethodMatcherHelper
+                .createMethodMatcher(instrumentMethodSignatures, ignoreMethodSignatures);
 
         new AgentBuilder.Default()
-                .type(ElementMatchers.nameStartsWith(targetPackage))
+                .type(targetPackageMatcher)
                 .transform(new AgentBuilder.Transformer.ForAdvice()
-                        .advice(ElementMatchers.isMethod(),
-                                MethodExecutionTime.class.getName()))
+                        .advice(methodMatchers, MethodExecutionTime.class.getName()))
                 .installOn(inst);
+
+        System.out.println("-".repeat(20));
     }
 
-    public static void configureLoggerName(String loggerName) {
-        System.setProperty("logFilename", "logs/" + loggerName);
+    public static void configureLoggerName(Configuration.Logging loggingInfo) {
+        String logFileName = loggingInfo.getFile();
+        if (logFileName == null || logFileName.isEmpty())
+            logFileName = "logs.log";
+
+        System.setProperty("logFilename", logFileName);
 
         LoggerContext ctx = (LoggerContext) LogManager.getContext(false);
         ctx.reconfigure();
