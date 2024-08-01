@@ -204,27 +204,13 @@ public class MethodMatcherHelper {
         
         int numArguments = 0;
         Stack<Character> stack = new Stack<>();
-        boolean inGeneric = false;
-        boolean inArray = false;
         
         for (char c : argumentsText.toCharArray()) {
-            if (c == '<') {
+            if (c == '<' || c == '[') {
                 stack.push(c);
-                inGeneric = true;
-            } else if (c == '>') {
+            } else if (c == '>' || c == ']') {
                 stack.pop();
-                if (stack.isEmpty()) {
-                    inGeneric = false;
-                }
-            } else if (c == '[') {
-                stack.push(c);
-                inArray = true;
-            } else if (c == ']') {
-                stack.pop();
-                if (stack.isEmpty()) {
-                    inArray = false;
-                }
-            } else if (c == ',' && stack.isEmpty() && !inArray) {
+            } else if (c == ',' && stack.isEmpty()) {
                 numArguments++;
             }
         }

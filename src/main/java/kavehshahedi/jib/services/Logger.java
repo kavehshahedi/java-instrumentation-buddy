@@ -9,7 +9,7 @@ public class Logger {
 
     private static org.apache.logging.log4j.Logger logger;
 
-    private Logger() {
+    public Logger() {
     }
 
     public Logger(Configuration.Logging loggingInfo) {
