@@ -1,4 +1,4 @@
-package ca.polymtl.gigl.moose.kavehshahedi.bbi.models;
+package kavehshahedi.jib.models;
 
 import java.util.Collections;
 import java.util.List;
@@ -85,10 +85,10 @@ public class Configuration {
         public Instrumentation() {
         }
 
-        public Instrumentation(String targetPackage, TargetMethods targetMethods, boolean checkOnlyVisited) {
+        public Instrumentation(String targetPackage, TargetMethods targetMethods, boolean onlyCheckVisited) {
             this.targetPackage = targetPackage != null ? targetPackage : "";
             this.targetMethods = targetMethods != null ? targetMethods : new TargetMethods();
-            this.onlyCheckVisited = checkOnlyVisited;
+            this.onlyCheckVisited = onlyCheckVisited;
         }
 
         // Getters and setters
@@ -165,7 +165,7 @@ public class Configuration {
                     output.append("\t\t\t\t- ").append(method).append("\n");
                 }
 
-                return output.toString().stripTrailing();
+                return output.toString().trim();
             }
         }
     }

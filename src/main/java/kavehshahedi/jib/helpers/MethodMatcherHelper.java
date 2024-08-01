@@ -1,7 +1,7 @@
-package ca.polymtl.gigl.moose.kavehshahedi.bbi.helpers;
+package kavehshahedi.jib.helpers;
 
-import ca.polymtl.gigl.moose.kavehshahedi.bbi.FunctionEntryAgent;
-import ca.polymtl.gigl.moose.kavehshahedi.bbi.models.Configuration;
+import kavehshahedi.jib.JavaInstrumentationBuddy;
+import kavehshahedi.jib.models.Configuration;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.matcher.ElementMatcher;
@@ -9,6 +9,7 @@ import net.bytebuddy.matcher.ElementMatchers;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Stack;
 
 public class MethodMatcherHelper {
 
@@ -46,7 +47,7 @@ public class MethodMatcherHelper {
 
         // Exclude the agent class from instrumentation (along with logging and other)
         targetPackageMatcher = targetPackageMatcher
-                .and(ElementMatchers.not(ElementMatchers.nameStartsWith(FunctionEntryAgent.class.getPackageName())));
+                .and(ElementMatchers.not(ElementMatchers.nameStartsWith(JavaInstrumentationBuddy.class.getPackage().getName())));
         targetPackageMatcher = targetPackageMatcher
                 .and(ElementMatchers.not(ElementMatchers.nameStartsWith("org.apache.logging.log4j")));
 
@@ -173,7 +174,7 @@ public class MethodMatcherHelper {
             String declaringClass = String.join(".",
                     Arrays.copyOfRange(methodNameParts, 0, methodNameParts.length - 1));
 
-            int numArguments = argumentsPart.isEmpty() ? 0 : argumentsPart.split(",").length;
+            int numArguments = getNumberOfArguments(argumentsPart);
 
             return new MethodSignature(methodName, declaringClass, numArguments, isStatic, isPublic, isPrivate,
                     isProtected,
@@ -182,5 +183,40 @@ public class MethodMatcherHelper {
             System.err.println("Error parsing method signature: " + methodSignature);
             return null;
         }
+    }
+
+    static int getNumberOfArguments(String argumentsText) {
+        if (argumentsText.isEmpty()) {
+            return 0;
+        }
+        
+        int numArguments = 0;
+        Stack<Character> stack = new Stack<>();
+        boolean inGeneric = false;
+        boolean inArray = false;
+        
+        for (char c : argumentsText.toCharArray()) {
+            if (c == '<') {
+                stack.push(c);
+                inGeneric = true;
+            } else if (c == '>') {
+                stack.pop();
+                if (stack.isEmpty()) {
+                    inGeneric = false;
+                }
+            } else if (c == '[') {
+                stack.push(c);
+                inArray = true;
+            } else if (c == ']') {
+                stack.pop();
+                if (stack.isEmpty()) {
+                    inArray = false;
+                }
+            } else if (c == ',' && stack.isEmpty() && !inArray) {
+                numArguments++;
+            }
+        }
+        
+        return numArguments + 1;
     }
 }

@@ -4,13 +4,14 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>ca.polymtl.gigl.moose.kavehshahedi.bbi</groupId>
-    <artifactId>java-instrumentation-agent</artifactId>
-    <version>1.0</version>
+    <groupId>kavehshahedi.jib</groupId>
+    <artifactId>java-instrumentation-buddy</artifactId>
+    <version>1.1</version>
 
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
+        <jar.finalName>jib</jar.finalName>
     </properties>
 
     <build>
@@ -27,9 +28,10 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <finalName>${jar.finalName}</finalName>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>ca.polymtl.gigl.moose.kavehshahedi.bbi.FunctionEntryAgent</mainClass>
+                                    <mainClass>kavehshahedi.jib.JavaInstrumentationBuddy</mainClass>
                                 </transformer>
                             </transformers>
                             <filters>
@@ -45,7 +47,7 @@
                         </configuration>
                     </execution>
                 </executions>
-            </plugin>
+            </plugin>            
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -54,8 +56,8 @@
                 <configuration>
                     <archive>
                         <manifestEntries>
-                            <Premain-Class>ca.polymtl.gigl.moose.kavehshahedi.bbi.FunctionEntryAgent</Premain-Class>
-                            <Agent-Class>ca.polymtl.gigl.moose.kavehshahedi.bbi.FunctionEntryAgent</Agent-Class>
+                            <Premain-Class>kavehshahedi.jib.JavaInstrumentationBuddy</Premain-Class>
+                            <Agent-Class>kavehshahedi.jib.JavaInstrumentationBuddy</Agent-Class>
                             <Can-Redefine-Classes>true</Can-Redefine-Classes>
                             <Can-Retransform-Classes>true</Can-Retransform-Classes>
                             <Can-Set-Native-Method-Prefix>true</Can-Set-Native-Method-Prefix>
