@@ -17,10 +17,12 @@ public class MethodMatcherHelper {
         List<String> instrumentMethodSignatures = instrumentation.getTargetMethods().getInstrument();
         List<String> ignoreMethodSignatures = instrumentation.getTargetMethods().getIgnore();
 
+        // If no method signatures are provided for instrumentation (i.e., those that should be instrumented), match all methods
         ElementMatcher.Junction<MethodDescription> methodMatchers = ElementMatchers.none();
         if (instrumentMethodSignatures.isEmpty())
             methodMatchers = ElementMatchers.isMethod();
 
+        // Create matchers for each instrumented method signature (i.e., those that should be instrumented)
         for (String signature : instrumentMethodSignatures) {
             MethodSignature methodSignature = parseMethodSignature(signature);
             if (methodSignature != null) {
@@ -28,6 +30,16 @@ public class MethodMatcherHelper {
             }
         }
 
+        // If instrumentMainMethod is set to true, instrument the main method
+        if (instrumentation.isInstrumentMainMethod()) {
+            methodMatchers = methodMatchers.or(ElementMatchers.named("main")
+                    .and(ElementMatchers.takesArguments(String[].class))
+                    .and(ElementMatchers.isPublic())
+                    .and(ElementMatchers.isStatic())
+                    .and(ElementMatchers.returns(void.class)));
+        }
+
+        // Create matchers for each ignored method signature (i.e., those that should not be instrumented)
         for (String signature : ignoreMethodSignatures) {
             MethodSignature methodSignature = parseMethodSignature(signature);
             if (methodSignature != null) {

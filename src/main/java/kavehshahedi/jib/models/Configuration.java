@@ -81,14 +81,16 @@ public class Configuration {
         private String targetPackage = "*"; // Default target package
         private TargetMethods targetMethods = new TargetMethods();
         private boolean onlyCheckVisited = false;
+        private boolean instrumentMainMethod = false;
 
         public Instrumentation() {
         }
 
-        public Instrumentation(String targetPackage, TargetMethods targetMethods, boolean onlyCheckVisited) {
+        public Instrumentation(String targetPackage, TargetMethods targetMethods, boolean onlyCheckVisited, boolean instrumentMainMethod) {
             this.targetPackage = targetPackage != null ? targetPackage : "";
             this.targetMethods = targetMethods != null ? targetMethods : new TargetMethods();
             this.onlyCheckVisited = onlyCheckVisited;
+            this.instrumentMainMethod = instrumentMainMethod;
         }
 
         // Getters and setters
@@ -116,9 +118,20 @@ public class Configuration {
             this.onlyCheckVisited = onlyCheckVisited;
         }
 
+        public boolean isInstrumentMainMethod() {
+            return instrumentMainMethod;
+        }
+
+        public void setInstrumentMainMethod(boolean instrumentMainMethod) {
+            this.instrumentMainMethod = instrumentMainMethod;
+        }
+
         @Override
         public String toString() {
-            return "\t\tTarget Package: " + targetPackage + "\n\t\tOnly Check Visited: " + onlyCheckVisited + "\n\t\tTarget Methods: " + targetMethods.toString();
+            return "\t\tTarget Package: " + targetPackage +
+            "\n\t\tOnly Check Visited: " + onlyCheckVisited +
+            "\n\t\tInstrument Main Method: " + instrumentMainMethod +
+            "\n\t\tTarget Methods: " + targetMethods.toString();
         }
     
         public static class TargetMethods {
