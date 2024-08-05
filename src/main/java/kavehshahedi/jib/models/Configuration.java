@@ -3,6 +3,8 @@ package kavehshahedi.jib.models;
 import java.util.Collections;
 import java.util.List;
 
+import kavehshahedi.jib.services.Time;
+
 public class Configuration {
 
     // Constants
@@ -45,13 +47,15 @@ public class Configuration {
     public static class Logging {
         private String level = DEFAULT_LOGGING_LEVEL;
         private String file = DEFAULT_LOG_FILE;
+        private boolean addTimestampToFileNames = false;
 
         public Logging() {
         }
 
-        public Logging(String level, String file) {
+        public Logging(String level, String file, boolean addTimestampToFileNames) {
             this.level = level != null ? level : DEFAULT_LOGGING_LEVEL;
             this.file = file != null ? file : DEFAULT_LOG_FILE;
+            this.addTimestampToFileNames = addTimestampToFileNames;
         }
     
         // Getters and setters
@@ -64,16 +68,29 @@ public class Configuration {
         }
     
         public String getFile() {
-            return file != null ? file : DEFAULT_LOG_FILE;
+            String fileName = file != null ? file : DEFAULT_LOG_FILE;
+            if (addTimestampToFileNames) {
+                fileName = fileName.replace(".log", "_" + Time.getTimeNanoSeconds() + ".log");
+            }
+
+            return fileName;
         }
     
         public void setFile(String file) {
             this.file = file != null ? file : DEFAULT_LOG_FILE;
         }
 
+        public boolean isAddTimestampToFileNames() {
+            return addTimestampToFileNames;
+        }
+
+        public void setAddTimestampToFileNames(boolean addTimestampToFileNames) {
+            this.addTimestampToFileNames = addTimestampToFileNames;
+        }
+
         @Override
         public String toString() {
-            return "\t\tLevel: " + level + "\n\t\tFile: " + file;
+            return "\t\tLevel: " + level + "\n\t\tFile: " + file + "\n\t\tAdd Timestamp To File Names: " + addTimestampToFileNames;
         }
     }
 
