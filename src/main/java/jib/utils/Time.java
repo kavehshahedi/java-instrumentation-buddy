@@ -1,4 +1,4 @@
-package kavehshahedi.jib.services;
+package jib.utils;
 
 public class Time {
 
@@ -14,5 +14,9 @@ public class Time {
 
     public static long getTimeNanoSeconds() {
         return System.nanoTime() + TIME_OFFSET;
+    }
+
+    public static long getOptimizedTimeOffset() {
+        return Long.parseLong(String.valueOf(System.currentTimeMillis()).substring(0, 4) + "000000000000000");
     }
 }

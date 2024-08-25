@@ -1,9 +1,9 @@
-package kavehshahedi.jib.models;
+package jib.models;
 
 import java.util.Collections;
 import java.util.List;
 
-import kavehshahedi.jib.services.Time;
+import jib.utils.Time;
 
 public class Configuration {
 
@@ -48,14 +48,17 @@ public class Configuration {
         private String level = DEFAULT_LOGGING_LEVEL;
         private String file = DEFAULT_LOG_FILE;
         private boolean addTimestampToFileNames = false;
+        private long timestamp = -1;
+        private boolean useHash = false;
 
         public Logging() {
         }
 
-        public Logging(String level, String file, boolean addTimestampToFileNames) {
+        public Logging(String level, String file, boolean addTimestampToFileNames, boolean useHash) {
             this.level = level != null ? level : DEFAULT_LOGGING_LEVEL;
             this.file = file != null ? file : DEFAULT_LOG_FILE;
             this.addTimestampToFileNames = addTimestampToFileNames;
+            this.useHash = useHash;
         }
     
         // Getters and setters
@@ -70,7 +73,10 @@ public class Configuration {
         public String getFile() {
             String fileName = file != null ? file : DEFAULT_LOG_FILE;
             if (addTimestampToFileNames) {
-                fileName = fileName.replace(".log", "_" + Time.getTimeNanoSeconds() + ".log");
+                if (timestamp == -1)
+                    timestamp = Time.getTimeNanoSeconds();
+                    
+                fileName = fileName.replace(".log", "_" + timestamp + ".log");
             }
 
             return fileName;
@@ -88,9 +94,20 @@ public class Configuration {
             this.addTimestampToFileNames = addTimestampToFileNames;
         }
 
+        public boolean isUseHash() {
+            return useHash;
+        }
+
+        public void setUseHash(boolean useHash) {
+            this.useHash = useHash;
+        }
+
         @Override
         public String toString() {
-            return "\t\tLevel: " + level + "\n\t\tFile: " + file + "\n\t\tAdd Timestamp To File Names: " + addTimestampToFileNames;
+            return "\t\tLevel: " + level +
+            "\n\t\tFile: " + file +
+            "\n\t\tAdd Timestamp To File Names: " + addTimestampToFileNames +
+            "\n\t\tUse Hash: " + useHash;
         }
     }
 

@@ -1,7 +1,7 @@
-package kavehshahedi.jib.helpers;
+package jib.helpers;
 
-import kavehshahedi.jib.JavaInstrumentationBuddy;
-import kavehshahedi.jib.models.Configuration;
+import jib.JavaInstrumentationBuddy;
+import jib.models.Configuration;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.matcher.ElementMatcher;
@@ -69,8 +69,12 @@ public class MethodMatcherHelper {
     private static ElementMatcher.Junction<MethodDescription> createMatcherFromSignature(
             MethodSignature methodSignature) {
         ElementMatcher.Junction<MethodDescription> matcher = ElementMatchers.named(methodSignature.getMethodName())
-                .and(ElementMatchers.takesArguments(methodSignature.getNumArguments()))
-                .and(ElementMatchers.isDeclaredBy(ElementMatchers.named(methodSignature.getDeclaringClass())));
+                .and(ElementMatchers.takesArguments(methodSignature.getNumArguments()));
+
+        // Add declaring class matcher
+        if (!methodSignature.getDeclaringClass().isEmpty()) {
+            matcher = matcher.and(ElementMatchers.isDeclaredBy(ElementMatchers.named(methodSignature.getDeclaringClass())));
+        }
 
         // Add static/non-static matcher
         matcher = methodSignature.isStatic() ? matcher.and(ElementMatchers.isStatic())

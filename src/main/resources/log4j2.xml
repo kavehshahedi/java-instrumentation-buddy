@@ -1,17 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <Configuration status="INFO">
+    <Properties>
+        <Property name="log4j2.enableThreadlocals">true</Property>
+        <Property name="log4j2.enableDirectEncoders">true</Property>
+        <Property name="log4j2.asyncLoggerRingBufferSize">2097152</Property>
+        <Property name="log4j2.asyncLoggerWaitStrategy">Yield</Property>
+    </Properties>
     <Appenders>
         <RandomAccessFile name="RandomAccessFile" fileName="${sys:logFilename}" immediateFlush="false"
-            append="true">
+            append="true" bufferSize="262144">
             <PatternLayout>
                 <Pattern>%m%n</Pattern>
             </PatternLayout>
         </RandomAccessFile>
     </Appenders>
     <Loggers>
-        <Root level="info" includeLocation="false">
+        <AsyncRoot level="info" includeLocation="false">
             <AppenderRef ref="RandomAccessFile" />
-        </Root>
+        </AsyncRoot>
     </Loggers>
 </Configuration>
