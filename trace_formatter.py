@@ -1,9 +1,8 @@
 import json
-import os
 import re
 import argparse
 
-REGEX = re.compile(r'\[(\d+)\] (ENTER|EXIT) ([\w\W\s.]+)')
+REGEX = re.compile(r'\[(\d+)\] (S|E) ([\w\W\s.]+)')
 
 def process_line(line):
     match = REGEX.match(line)
@@ -13,11 +12,10 @@ def process_line(line):
         method_signature = match.group(3).strip()
         return {
             'ts': timestamp,
-            'ph': 'B' if eventType == 'ENTER' else 'E',
+            'ph': 'B' if eventType == 'S' else 'E',
             'name': method_signature
         }
     else:
-        print(f'No match: {line}')
         return None
 
 def main():
