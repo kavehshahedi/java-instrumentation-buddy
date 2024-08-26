@@ -321,66 +321,70 @@ python trace_formatter.py app.log app.json
 ```json
 [
     {
-        "ts": 1724686484544229333,
+        "ts": 1724686484544229.333,
         "ph": "B",
         "name": "public static void com.example.pkg.Main.main(java.lang.String[])"
     },
     {
-        "ts": 1724686484546125563,
+        "ts": 1724686484546125.563,
         "ph": "B",
         "name": "private static void com.example.pkg.Main.firstMethod()"
     },
     {
-        "ts": 1724686484546247763,
+        "ts": 1724686484546247.763,
         "ph": "E",
         "name": "private static void com.example.pkg.Main.firstMethod()"
     },
     {
-        "ts": 1724686484546282093,
+        "ts": 1724686484546282.093,
         "ph": "B",
         "name": "java.lang.String com.example.pkg.Main.secondMethod()"
     },
     {
-        "ts": 1724686484546306258,
+        "ts": 1724686484546306.258,
         "ph": "E",
         "name": "java.lang.String com.example.pkg.Main.secondMethod()"
     },
     {
-        "ts": 1724686484546331966,
+        "ts": 1724686484546331.966,
         "ph": "B",
         "name": "public int com.example.pkg.Main.thirdMethod(int,int)"
     },
     {
-        "ts": 1724686484546356608,
+        "ts": 1724686484546356.608,
         "ph": "E",
         "name": "public int com.example.pkg.Main.thirdMethod(int,int)"
     },
     {
-        "ts": 1724686484546380330,
+        "ts": 1724686484546380.330,
         "ph": "B",
         "name": "protected com.example.pkg.Another com.example.pkg.Main.fourthMethod()"
     },
     {
-        "ts": 1724686484548543913,
+        "ts": 1724686484548543.913,
         "ph": "E",
         "name": "protected com.example.pkg.Another com.example.pkg.Main.fourthMethod()"
     },
     {
-        "ts": 1724686484548604858,
+        "ts": 1724686484548604.858,
         "ph": "B",
         "name": "private static void com.example.pkg.Main.fifthMethod(java.util.HashMap,java.lang.String)"
     },
     {
-        "ts": 1724686484548632518,
+        "ts": 1724686484548632.518,
         "ph": "E",
         "name": "private static void com.example.pkg.Main.fifthMethod(java.util.HashMap,java.lang.String)"
     },
     {
-        "ts": 1724686484548654718,
+        "ts": 1724686484548654.718,
         "ph": "E",
         "name": "public static void com.example.pkg.Main.main(java.lang.String[])"
     }
 ]
 ```
+
+Then, you may import the trace file in Trace Compass. Below is a sample visualization of our trace file (i.e., `Flame Chart`)
+
+![jib_flame_chart](https://github.com/user-attachments/assets/2f21644b-f2e3-4412-82a4-9a6b31028df2)
 
 You can see [**this video tutorial on Youtube**](https://www.youtube.com/watch?v=YCdzmcpOrK4) to see how to import the generated json file in Trace Compass.
