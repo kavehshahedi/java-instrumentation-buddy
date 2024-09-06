@@ -15,14 +15,14 @@ public class Instrumentation {
         MethodExecutionAdvice.setConfig(config);
 
         ElementMatcher.Junction<TypeDescription> targetPackageMatcher =
-                MethodMatcherHelper.createTargetPackageMatcher(config.getInstrumentation());
+            MethodMatcherHelper.createTargetPackageMatcher(config.getInstrumentation());
         ElementMatcher.Junction<MethodDescription> methodMatcher =
-                MethodMatcherHelper.createMethodMatcher(config.getInstrumentation());
+            MethodMatcherHelper.createMethodMatcher(config.getInstrumentation());
 
         new AgentBuilder.Default()
-                .type(targetPackageMatcher)
-                .transform(new AgentBuilder.Transformer.ForAdvice()
-                        .advice(methodMatcher, MethodExecutionAdvice.class.getName()))
-                .installOn(inst);
+            .type(targetPackageMatcher)
+            .transform(new AgentBuilder.Transformer.ForAdvice()
+                 .advice(methodMatcher, MethodExecutionAdvice.class.getName()))
+            .installOn(inst);
     }
 }
