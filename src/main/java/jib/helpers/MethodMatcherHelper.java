@@ -13,16 +13,19 @@ import java.util.Stack;
 
 public class MethodMatcherHelper {
 
-    public static ElementMatcher.Junction<MethodDescription> createMethodMatcher(Configuration.Instrumentation instrumentation) {
+    public static ElementMatcher.Junction<MethodDescription> createMethodMatcher(
+            Configuration.Instrumentation instrumentation) {
         List<String> instrumentMethodSignatures = instrumentation.getTargetMethods().getInstrument();
         List<String> ignoreMethodSignatures = instrumentation.getTargetMethods().getIgnore();
 
-        // If no method signatures are provided for instrumentation (i.e., those that should be instrumented), match all methods
+        // If no method signatures are provided for instrumentation (i.e., those that
+        // should be instrumented), match all methods
         ElementMatcher.Junction<MethodDescription> methodMatchers = ElementMatchers.none();
         if (instrumentMethodSignatures.isEmpty())
             methodMatchers = ElementMatchers.isMethod();
 
-        // Create matchers for each instrumented method signature (i.e., those that should be instrumented)
+        // Create matchers for each instrumented method signature (i.e., those that
+        // should be instrumented)
         for (String signature : instrumentMethodSignatures) {
             MethodSignature methodSignature = parseMethodSignature(signature);
             if (methodSignature != null) {
@@ -39,7 +42,8 @@ public class MethodMatcherHelper {
                     .and(ElementMatchers.returns(void.class)));
         }
 
-        // Create matchers for each ignored method signature (i.e., those that should not be instrumented)
+        // Create matchers for each ignored method signature (i.e., those that should
+        // not be instrumented)
         for (String signature : ignoreMethodSignatures) {
             MethodSignature methodSignature = parseMethodSignature(signature);
             if (methodSignature != null) {
@@ -50,7 +54,8 @@ public class MethodMatcherHelper {
         return methodMatchers;
     }
 
-    public static ElementMatcher.Junction<TypeDescription> createTargetPackageMatcher(Configuration.Instrumentation instrumentation) {
+    public static ElementMatcher.Junction<TypeDescription> createTargetPackageMatcher(
+            Configuration.Instrumentation instrumentation) {
         ElementMatcher.Junction<TypeDescription> targetPackageMatcher = ElementMatchers.any();
         if (!instrumentation.getTargetPackage().isEmpty()
                 && !instrumentation.getTargetPackage().equals("*")) {
@@ -59,7 +64,8 @@ public class MethodMatcherHelper {
 
         // Exclude the agent class from instrumentation (along with logging and other)
         targetPackageMatcher = targetPackageMatcher
-                .and(ElementMatchers.not(ElementMatchers.nameStartsWith(JavaInstrumentationBuddy.class.getPackage().getName())));
+                .and(ElementMatchers
+                        .not(ElementMatchers.nameStartsWith(JavaInstrumentationBuddy.class.getPackage().getName())));
         targetPackageMatcher = targetPackageMatcher
                 .and(ElementMatchers.not(ElementMatchers.nameStartsWith("org.apache.logging.log4j")));
 
@@ -73,7 +79,8 @@ public class MethodMatcherHelper {
 
         // Add declaring class matcher
         if (!methodSignature.getDeclaringClass().isEmpty()) {
-            matcher = matcher.and(ElementMatchers.isDeclaredBy(ElementMatchers.named(methodSignature.getDeclaringClass())));
+            matcher = matcher
+                    .and(ElementMatchers.isDeclaredBy(ElementMatchers.named(methodSignature.getDeclaringClass())));
         }
 
         // Add static/non-static matcher
@@ -190,6 +197,10 @@ public class MethodMatcherHelper {
             String declaringClass = String.join(".",
                     Arrays.copyOfRange(methodNameParts, 0, methodNameParts.length - 1));
 
+            // Remove generics from declaring class
+            declaringClass = removeGenerics(declaringClass);
+
+            // Determine number of arguments
             int numArguments = getNumberOfArguments(argumentsPart);
 
             return new MethodSignature(methodName, declaringClass, numArguments, isStatic, isPublic, isPrivate,
@@ -201,14 +212,36 @@ public class MethodMatcherHelper {
         }
     }
 
+    static String removeGenerics(String methodSignature) {
+        StringBuilder result = new StringBuilder();
+        Stack<Character> stack = new Stack<>();
+        boolean inGeneric = false;
+
+        for (char c : methodSignature.toCharArray()) {
+            if (c == '<') {
+                stack.push(c);
+                inGeneric = true;
+            } else if (c == '>') {
+                stack.pop();
+                if (stack.isEmpty()) {
+                    inGeneric = false;
+                }
+            } else if (!inGeneric) {
+                result.append(c);
+            }
+        }
+
+        return result.toString();
+    }
+
     static int getNumberOfArguments(String argumentsText) {
         if (argumentsText.isEmpty()) {
             return 0;
         }
-        
+
         int numArguments = 0;
         Stack<Character> stack = new Stack<>();
-        
+
         for (char c : argumentsText.toCharArray()) {
             if (c == '<' || c == '[') {
                 stack.push(c);
@@ -218,7 +251,7 @@ public class MethodMatcherHelper {
                 numArguments++;
             }
         }
-        
+
         return numArguments + 1;
     }
 }
