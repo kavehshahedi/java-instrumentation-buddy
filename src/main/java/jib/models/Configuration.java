@@ -116,15 +116,17 @@ public class Configuration {
         private TargetMethods targetMethods = new TargetMethods();
         private boolean onlyCheckVisited = false;
         private boolean instrumentMainMethod = false;
+        private int maxNumberOfInstrumentations = -1;
 
         public Instrumentation() {
         }
 
-        public Instrumentation(String targetPackage, TargetMethods targetMethods, boolean onlyCheckVisited, boolean instrumentMainMethod) {
+        public Instrumentation(String targetPackage, TargetMethods targetMethods, boolean onlyCheckVisited, boolean instrumentMainMethod, int maxNumberOfInstrumentations) {
             this.targetPackage = targetPackage != null ? targetPackage : "";
             this.targetMethods = targetMethods != null ? targetMethods : new TargetMethods();
             this.onlyCheckVisited = onlyCheckVisited;
             this.instrumentMainMethod = instrumentMainMethod;
+            this.maxNumberOfInstrumentations = maxNumberOfInstrumentations;
         }
 
         // Getters and setters
@@ -160,11 +162,20 @@ public class Configuration {
             this.instrumentMainMethod = instrumentMainMethod;
         }
 
+        public int getMaxNumberOfInstrumentations() {
+            return maxNumberOfInstrumentations;
+        }
+
+        public void setMaxNumberOfInstrumentations(int maxNumberOfInstrumentations) {
+            this.maxNumberOfInstrumentations = maxNumberOfInstrumentations;
+        }
+
         @Override
         public String toString() {
             return "\t\tTarget Package: " + targetPackage +
             "\n\t\tOnly Check Visited: " + onlyCheckVisited +
             "\n\t\tInstrument Main Method: " + instrumentMainMethod +
+            "\n\t\tMax Number Of Instrumentations: " + (maxNumberOfInstrumentations == -1 ? "N/A" : maxNumberOfInstrumentations) +
             "\n\t\tTarget Methods: " + targetMethods.toString();
         }
     
