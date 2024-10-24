@@ -13,6 +13,7 @@ public class Configuration {
 
     private Logging logging = new Logging();
     private Instrumentation instrumentation = new Instrumentation();
+    private Misc misc = new Misc();
 
     public Configuration() {
     }
@@ -31,6 +32,14 @@ public class Configuration {
         this.logging = logging != null ? logging : new Logging();
     }
 
+    public Misc getMisc() {
+        return misc != null ? misc : new Misc();
+    }
+
+    public void setMisc(Misc misc) {
+        this.misc = misc != null ? misc : new Misc();
+    }
+
     public Instrumentation getInstrumentation() {
         return instrumentation != null ? instrumentation : new Instrumentation();
     }
@@ -41,7 +50,10 @@ public class Configuration {
 
     @Override
     public String toString() {
-        return "Instrumentation Configuration:\n\tLogging:\n" + logging.toString() + "\n\tInstrumentation:\n" + instrumentation.toString();
+        return "Instrumentation Configuration:" + 
+        "\n\tLogging:\n" + logging.toString() +
+        "\n\tInstrumentation:\n" + instrumentation.toString() +
+        "\n\tMisc:\n" + misc.toString();
     }
 
     public static class Logging {
@@ -236,6 +248,31 @@ public class Configuration {
 
                 return output.toString().trim();
             }
+        }
+    }
+
+    public static class Misc {
+        private boolean convertToJson = false;
+
+        public Misc() {
+        }
+
+        public Misc(boolean convertToJson) {
+            this.convertToJson = convertToJson;
+        }
+
+        // Getters and setters
+        public boolean isConvertToJson() {
+            return convertToJson;
+        }
+
+        public void setConvertToJson(boolean convertToJson) {
+            this.convertToJson = convertToJson;
+        }
+
+        @Override
+        public String toString() {
+            return "\t\tConvert To JSON: " + convertToJson;
         }
     }
 }

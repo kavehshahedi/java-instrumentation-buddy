@@ -21,7 +21,9 @@ public class AgentLifecycleManager {
             long endTime = Time.getTimeNanoSeconds();
             
             saveAgentData(startTime, endTime, config);
-            convertLogFile(config);
+
+            convertLogFileToJson(config);
+
             Logger.close();
         }));
     }
@@ -42,7 +44,11 @@ public class AgentLifecycleManager {
         }
     }
 
-    private static void convertLogFile(Configuration config) {
+    private static void convertLogFileToJson(Configuration config) {
+        if (!config.getMisc().isConvertToJson()) {
+            return;
+        }
+        
         String logFile = config.getLogging().getFile();
         String jsonLogFile = logFile.replace(".log", ".log.json");
         new TraceConverter(config, logFile, jsonLogFile).convert();
