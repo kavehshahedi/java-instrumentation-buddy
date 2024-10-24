@@ -50,15 +50,17 @@ public class Configuration {
         private boolean addTimestampToFileNames = false;
         private long timestamp = -1;
         private boolean useHash = false;
+        private boolean optimizeTimestamp = false;
 
         public Logging() {
         }
 
-        public Logging(String level, String file, boolean addTimestampToFileNames, boolean useHash) {
+        public Logging(String level, String file, boolean addTimestampToFileNames, boolean useHash, boolean optimizeTimestamp) {
             this.level = level != null ? level : DEFAULT_LOGGING_LEVEL;
             this.file = file != null ? file : DEFAULT_LOG_FILE;
             this.addTimestampToFileNames = addTimestampToFileNames;
             this.useHash = useHash;
+            this.optimizeTimestamp = optimizeTimestamp;
         }
     
         // Getters and setters
@@ -102,12 +104,21 @@ public class Configuration {
             this.useHash = useHash;
         }
 
+        public boolean isOptimizeTimestamp() {
+            return optimizeTimestamp;
+        }
+
+        public void setOptimizeTimestamp(boolean optimizeTimestamp) {
+            this.optimizeTimestamp = optimizeTimestamp;
+        }
+
         @Override
         public String toString() {
             return "\t\tLevel: " + level +
             "\n\t\tFile: " + file +
             "\n\t\tAdd Timestamp To File Names: " + addTimestampToFileNames +
-            "\n\t\tUse Hash: " + useHash;
+            "\n\t\tUse Hash: " + useHash + 
+            "\n\t\tOptimize Timestamp: " + optimizeTimestamp;
         }
     }
 

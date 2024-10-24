@@ -30,7 +30,7 @@ public class AgentLifecycleManager {
         AgentInfo agentInfo = new AgentInfo(
             startTime, 
             endTime, 
-            Time.getOptimizedTimeOffset(), 
+            config.getLogging().isOptimizeTimestamp() ? Time.getOptimizedTimeOffset() : 0, 
             Logger.getMethodSignatureHashJson()
         );
 
@@ -45,6 +45,6 @@ public class AgentLifecycleManager {
     private static void convertLogFile(Configuration config) {
         String logFile = config.getLogging().getFile();
         String jsonLogFile = logFile.replace(".log", ".log.json");
-        new TraceConverter(logFile, jsonLogFile).convert();
+        new TraceConverter(config, logFile, jsonLogFile).convert();
     }
 }

@@ -15,6 +15,7 @@ public class Logger {
     private static org.apache.logging.log4j.Logger logger;
     
     private static boolean useHash = false;
+    private static boolean optimizeTimestamp = false;
 
     public Logger() {
     }
@@ -29,6 +30,7 @@ public class Logger {
         logger = LogManager.getLogger(Logger.class);
 
         useHash = loggingInfo.isUseHash();
+        optimizeTimestamp = loggingInfo.isOptimizeTimestamp();
     }
 
     private static final String LOG_PATTERN = "[%s] %s %s";
@@ -52,7 +54,7 @@ public class Logger {
 
     public static void logTime(String methodSignature, String type) {
         String message = String.format(LOG_PATTERN,
-                String.valueOf(Time.getTimeNanoSeconds()).substring(4),
+                optimizeTimestamp ? String.valueOf(Time.getTimeNanoSeconds()).substring(4) : Time.getTimeNanoSeconds(),
                 type,
                 useHash ? getMethodHash(methodSignature) : methodSignature);
 
