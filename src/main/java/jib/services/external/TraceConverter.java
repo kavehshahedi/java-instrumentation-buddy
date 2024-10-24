@@ -1,17 +1,24 @@
 package jib.services.external;
 
-import java.io.*;
-import java.util.*;
-import java.util.regex.*;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import jib.models.TraceEntry;
+import jib.services.JsonFileHandler;
 import jib.utils.Time;
 
 public class TraceConverter {
 
-    public static final Pattern REGEX = Pattern.compile("\\[(\\d+)\\] (S|E) ([\\w\\W\\s.]+)");
-    public final String inputPath;
-    public final String outputPath;
-    public final int batchSize;
+    private static final Pattern REGEX = Pattern.compile("\\[(\\d+)\\] (S|E) ([\\w\\W\\s.]+)");
+    private final String inputPath;
+    private final String outputPath;
+    private final int batchSize;
 
     public TraceConverter(String inputPath, String outputPath, int batchSize) {
         this.inputPath = inputPath;
@@ -20,75 +27,13 @@ public class TraceConverter {
     }
 
     public TraceConverter(String inputPath, String outputPath) {
-        this(inputPath, outputPath, 1000); // Default batch size of 1000
+        this(inputPath, outputPath, 1000);
     }
 
-    public static class TraceEntry {
-        final long timestamp;
-        final String phase;
-        final String name;
-
-        TraceEntry(long timestamp, String phase, String name) {
-            this.timestamp = timestamp + Time.getOptimizedTimeOffset();
-            this.phase = phase;
-            this.name = name;
-        }
-
-        String toJson(int indent) {
-            StringBuilder sb = new StringBuilder();
-            String indentStr = "";
-            for (int i = 0; i < indent; i++) {
-                indentStr += " ";
-            }
-            sb.append(indentStr).append("{\n");
-            sb.append(indentStr).append("    \"ts\": ").append(timestamp).append(",\n");
-            sb.append(indentStr).append("    \"ph\": \"").append(phase).append("\",\n");
-            sb.append(indentStr).append("    \"name\": \"").append(escapeJsonString(name)).append("\"\n");
-            sb.append(indentStr).append("}");
-            return sb.toString();
-        }
-
-        public String escapeJsonString(String input) {
-            StringBuilder sb = new StringBuilder();
-            for (char c : input.toCharArray()) {
-                switch (c) {
-                    case '"':
-                        sb.append("\\\"");
-                        break;
-                    case '\\':
-                        sb.append("\\\\");
-                        break;
-                    case '\b':
-                        sb.append("\\b");
-                        break;
-                    case '\f':
-                        sb.append("\\f");
-                        break;
-                    case '\n':
-                        sb.append("\\n");
-                        break;
-                    case '\r':
-                        sb.append("\\r");
-                        break;
-                    case '\t':
-                        sb.append("\\t");
-                        break;
-                    default:
-                        if (c < ' ') {
-                            sb.append(String.format("\\u%04x", (int) c));
-                        } else {
-                            sb.append(c);
-                        }
-                }
-            }
-            return sb.toString();
-        }
-    }
-
-    public TraceEntry processLine(String line) {
+    private TraceEntry processLine(String line) {
         Matcher matcher = REGEX.matcher(line);
         if (matcher.matches()) {
-            long timestamp = Long.parseLong(matcher.group(1));
+            long timestamp = Long.parseLong(matcher.group(1)) + Time.getOptimizedTimeOffset();
             String phase = matcher.group(2).equals("S") ? "B" : "E";
             String name = matcher.group(3).trim();
             return new TraceEntry(timestamp, phase, name);
@@ -97,50 +42,19 @@ public class TraceConverter {
     }
 
     public void convert() {
-        try (BufferedReader reader = new BufferedReader(new FileReader(inputPath));
-             BufferedWriter writer = new BufferedWriter(new FileWriter(outputPath))) {
-            
-            writer.write("[\n");
-            
-            List<TraceEntry> batch = new ArrayList<>();
-            boolean first = true;
+        List<TraceEntry> entries = new ArrayList<>();
+        try (BufferedReader reader = new BufferedReader(new FileReader(inputPath))) {
             String line;
-            
             while ((line = reader.readLine()) != null) {
-                TraceEntry result = processLine(line);
-                if (result != null) {
-                    batch.add(result);
-                    
-                    if (batch.size() >= batchSize) {
-                        writeJsonBatch(writer, batch, !first);
-                        first = false;
-                        batch.clear();
-                    }
+                TraceEntry entry = processLine(line);
+                if (entry != null) {
+                    entries.add(entry);
                 }
             }
-            
-            // Write any remaining items in the batch
-            if (!batch.isEmpty()) {
-                writeJsonBatch(writer, batch, !first);
-            }
-            
-            writer.write("\n]");
-        } catch (IOException e) {
-            System.err.println("Error converting trace file: " + e.getMessage());
-        }
-    }
 
-    public void writeJsonBatch(BufferedWriter writer, List<TraceEntry> batch, boolean needsComma) 
-            throws IOException {
-        if (needsComma) {
-            writer.write(",\n");
-        }
-        
-        for (int i = 0; i < batch.size(); i++) {
-            if (i > 0) {
-                writer.write(",\n");
-            }
-            writer.write(batch.get(i).toJson(4));
+            JsonFileHandler.writeJsonArrayInBatches(outputPath, entries.iterator(), batchSize);
+        } catch (IOException e) {
+            System.err.println("Error reading file: " + e.getMessage());
         }
     }
 }
