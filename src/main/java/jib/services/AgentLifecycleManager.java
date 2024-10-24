@@ -4,6 +4,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 
 import jib.models.Configuration;
+import jib.services.external.TraceConverter;
 import jib.utils.Time;
 
 public class AgentLifecycleManager {
@@ -17,6 +18,10 @@ public class AgentLifecycleManager {
             String info = createAgentInfoJson(startTime, endTime);
             writeAgentInfoToFile(info, config.getLogging().getFile());
             Logger.close();
+
+            // Convert and save the log file to a JSON file
+            TraceConverter converter = new TraceConverter(config.getLogging().getFile(), config.getLogging().getFile().replace(".log", ".log.json"));
+            converter.convert();
         }));
     }
 
