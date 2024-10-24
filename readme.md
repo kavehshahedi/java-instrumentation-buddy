@@ -41,8 +41,6 @@ java [OPTIONS] -jar <program commands>
 java [OPTIONS] -javaagent:path/to/the/jib.jar=<config=configuration.yaml> -jar <program commands>
 ```
 
-Thank you for providing the YAML example. I'll complete the "Agent Configuration" section based on the information you've given. Here's a draft of the content:
-
 ### Agent Configuration
 
 The agent configuration is specified in a YAML file. This file allows you to customize various aspects of the agent's behavior. Below are the available configuration options:
@@ -52,7 +50,7 @@ The agent configuration is specified in a YAML file. This file allows you to cus
 The `logging` section controls how the agent generates log files:
 
 - `file`: Specifies the path to the log file where the agent will write its output.
-  - Example: `path/to/file.log`
+  - Default: `app.log`
 
 - `addTimestampToFileNames`: When set to `true`, adds a timestamp to the log file name.
   - Default: `false`
@@ -60,19 +58,24 @@ The `logging` section controls how the agent generates log files:
 - `useHash`: If `true`, the agent uses hashing for method signatures in the log file. This is useful for reducing the size of the log file when there are a large number of method logs with long signatures. The mapping of the hashes will be stored in a separate JSON file.
   - Default: `false`
 
+- `optimizeTimestamp`: When set to `true`, optimizes timestamp handling for improved performance. Basically, it removes the first 4 digits of the timestamp to reduce the log file size.
+  - Default: `false`
+
 #### Instrumentation
 
 The `instrumentation` section defines which parts of your code the agent will instrument:
 
-- `targetPackage`: Specifies which package to instrument. If not set, all classes will be instrumented (both within and outside of the program).
-  - Example: `com.example`
-  - Default: empty (all classes are instrumented)
+- `targetPackage`: Specifies which package to instrument.
+  - Default: `*` (all packages)
 
 - `onlyCheckVisited`: When set to `true`, the agent only instruments the entry of each function once. This is useful for checking code coverage.
   - Default: `false`
 
 - `instrumentMainMethod`: If `true`, the agent will instrument the main method of the main class.
   - Default: `false`
+
+- `maxNumberOfInstrumentations`: Sets a limit on the number of instrumentations to perform. Use -1 for unlimited.
+  - Default: `-1`
 
 - `targetMethods`: Allows you to specify which methods to instrument or ignore. This section has two sub-sections:
   - `instrument`: A list of methods to instrument. If specified, only these methods will be instrumented.
@@ -88,63 +91,66 @@ The `instrumentation` section defines which parts of your code the agent will in
         - protected java.lang.String com.example.MainClass.ignoredMethodName(float a)
       ```
 
-    ##### Method Structure
+#### Misc
 
-    When specifying methods in the `instrument` or `ignore` lists, use the following format:
+The `misc` section contains additional configuration options:
 
-    ```
-    [visibility] [static] return-type [declaring-class.]method-name(args)
-    ```
+- `convertToJson`: When set to `true`, converts the output logs to JSON format. This format is supported by visualization tools like Eclipse Trace Compass.
+  - Default: `false`
 
-    Where:
-    - `[visibility]` is one of (required):
-        - `public`
-        - `protected`
-        - `private`
-        - (empty for package-protected)
-    - `[static]` is one of (required):
-        - `static`
-        - (empty for non-static)
-    - `return-type` is the method's return type
-        - it should be the fully qualified class name (e.g., `java.lang.String` or `void`) (required)
-    - `[declaring-class]` is the fully qualified class name where the method is declared (optional)
-    - `method-name` is the name of the method (required)
-    - `(args)` are the method's parameters (required)
+##### Method Structure
 
-    Examples:
-    ```java
-    private static void com.example.MainClass.methodName(int a, java.lang.String b)
-    protected java.lang.String ignoredMethodName(float a)
-    public java.util.List<java.lang.String> getNames()
-    void processData(byte[] data)
-    ```
-  Note: You can specify either `instrument` or `ignore`, but not both since it doesn't make sense to instrument and ignore methods at the same time.
+When specifying methods in the `instrument` or `ignore` lists, use the following format:
+
+```
+[visibility] [static] return-type [declaring-class.]method-name(args)
+```
+
+Where:
+- `[visibility]` is one of (required):
+    - `public`
+    - `protected`
+    - `private`
+    - (empty for package-protected)
+- `[static]` is one of (required):
+    - `static`
+    - (empty for non-static)
+- `return-type` is the method's return type
+    - it should be the fully qualified class name (e.g., `java.lang.String` or `void`) (required)
+- `[declaring-class]` is the fully qualified class name where the method is declared (optional)
+- `method-name` is the name of the method (required)
+- `(args)` are the method's parameters (required)
+
+Examples:
+```java
+private static void com.example.MainClass.methodName(int a, java.lang.String b)
+protected java.lang.String ignoredMethodName(float a)
+public java.util.List<java.lang.String> getNames()
+void processData(byte[] data)
+```
+Note: You can specify either `instrument` or `ignore`, but not both since it doesn't make sense to instrument and ignore methods at the same time.
 
 Here's an example of a complete configuration file:
 
 ```yaml
 logging:
   file: app.log
-  addTimestampToFileNames: false
-  useHash: false
+  addTimestampToFileNames: true
+  useHash: true
+  optimizeTimestamp: true
 
 instrumentation:
   targetPackage: com.example
   onlyCheckVisited: false
   instrumentMainMethod: true
+  maxNumberOfInstrumentations: 1000
   targetMethods:
     instrument:
       - private static void com.example.MainClass.methodName(int a, java.lang.String b)
+
+misc:
+  convertToJson: true
 ```
-
-To use this configuration, save it to a file (e.g., `configuration.yaml`) and specify it when attaching the agent to your Java application:
-
-```console
-java [OPTIONS] -javaagent:path/to/the/jib.jar=config=configuration.yaml -jar <program commands>
-```
-
-This configuration allows you to fine-tune the agent's behavior to suit your specific needs, whether you're focusing on particular packages, methods, or adjusting logging options.
-
 
 ## Example
 
@@ -307,17 +313,9 @@ There are several ways to analyze the logs generated by the agent. One common ap
 ### Analysis with Trace Compass
 *Background: [Eclipse Trace Compass™](https://eclipse.dev/tracecompass) is an open source application to solve performance and reliability issues by reading and analyzing logs or traces of a system. Its goal is to provide views, graphs, metrics, and more to help extract useful information from traces, in a way that is more user-friendly and informative than huge text dumps.*
 
-If you want to import the collected instrumentation logs in Trace Compass, you can use the `trace_formatter.py` script to re-format the log files, and generate a Trace Compass readable json file.
+If you want to import the collected instrumentation logs in Trace Compass, you can use the `convertToJson` option in the configuration file to convert the output logs to JSON format. 
 
-**Structure:**
-```console
-python trace_formatter.py [-h] [--batch_size BATCH_SIZE] input output
-```
-**Example:**
-```console
-python trace_formatter.py app.log app.json
-```
-**Output:**
+**JSON Output Example:**
 ```json
 [
     {
