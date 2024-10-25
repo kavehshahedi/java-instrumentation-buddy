@@ -18,7 +18,7 @@ public class TraceConverter {
 
     private Configuration config;
 
-    private static final Pattern REGEX = Pattern.compile("\\[(\\d+)\\] (S|E) ([\\w\\W\\s.]+)");
+    private static final Pattern REGEX = Pattern.compile("\\[(\\d+)\\] (S|E) \\[(\\d+)\\] \\[(\\d+)\\] ([\\w\\W\\s.]+)");
     private final String inputPath;
     private final String outputPath;
     private final int batchSize;
@@ -42,8 +42,10 @@ public class TraceConverter {
                 timestamp = timestamp + Time.getOptimizedTimeOffset();
             }
             String phase = matcher.group(2).equals("S") ? "B" : "E";
-            String name = matcher.group(3).trim();
-            return new TraceEntry(timestamp, phase, name);
+            int processId = Integer.parseInt(matcher.group(3));
+            int threadId = Integer.parseInt(matcher.group(4));
+            String name = matcher.group(5).trim();
+            return new TraceEntry(timestamp, phase, name, processId, threadId);
         }
         return null;
     }
