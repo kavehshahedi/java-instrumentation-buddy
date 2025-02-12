@@ -2,14 +2,16 @@ package jib.services;
 
 import java.io.IOException;
 
+import jib.core.Instrumentation;
 import jib.models.AgentInfo;
 import jib.models.Configuration;
 import jib.services.external.TraceConverter;
 import jib.utils.Time;
 
 public class AgentLifecycleManager {
-    
-    private AgentLifecycleManager() {}
+
+    private AgentLifecycleManager() {
+    }
 
     public static void trackLifetime(Configuration config) {
         long startTime = Time.getTimeNanoSeconds();
@@ -18,10 +20,10 @@ public class AgentLifecycleManager {
 
     private static void registerShutdownHook(long startTime, Configuration config) {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            long endTime = Time.getTimeNanoSeconds();
-            
-            saveAgentData(startTime, endTime, config);
+            Instrumentation.shutdown();
 
+            long endTime = Time.getTimeNanoSeconds();
+            saveAgentData(startTime, endTime, config);
             convertLogFileToJson(config);
 
             Logger.close();
@@ -30,11 +32,10 @@ public class AgentLifecycleManager {
 
     private static void saveAgentData(long startTime, long endTime, Configuration config) {
         AgentInfo agentInfo = new AgentInfo(
-            startTime, 
-            endTime, 
-            config.getLogging().isOptimizeTimestamp() ? Time.getOptimizedTimeOffset() : 0, 
-            Logger.getMethodSignatureHashJson()
-        );
+                startTime,
+                endTime,
+                config.getLogging().isOptimizeTimestamp() ? Time.getOptimizedTimeOffset() : 0,
+                Logger.getMethodSignatureHashJson());
 
         try {
             String jsonFile = config.getLogging().getFile().replace(".log", ".json");
@@ -48,7 +49,7 @@ public class AgentLifecycleManager {
         if (!config.getMisc().isConvertToJson()) {
             return;
         }
-        
+
         String logFile = config.getLogging().getFile();
         String jsonLogFile = logFile.replace(".log", ".log.json");
         new TraceConverter(config, logFile, jsonLogFile).convert();

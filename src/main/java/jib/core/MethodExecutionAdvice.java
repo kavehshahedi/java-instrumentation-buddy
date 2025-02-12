@@ -9,11 +9,19 @@ import jib.services.Logger;
 import jib.models.Configuration;
 
 public class MethodExecutionAdvice {
+    public static final String PROCESS_ID = initializeProcessId();
+    public static final ThreadLocal<StringBuilder> contextBuilder = ThreadLocal.withInitial(() -> new StringBuilder(256));
+
     public static final Set<String> visitedMethods = ConcurrentHashMap.newKeySet();
     public static final ConcurrentHashMap<String, LongAdder> instrumentationCounts = new ConcurrentHashMap<>();
     public static int maxInstrumentations;
     public static boolean isLimited;
     public static boolean isOnlyCheckVisited;
+
+    public static String initializeProcessId() {
+        String jvmName = ManagementFactory.getRuntimeMXBean().getName();
+        return jvmName.split("@")[0];
+    }
 
     public static void setConfig(Configuration config) {
         maxInstrumentations = config.getInstrumentation().getMaxNumberOfInstrumentations();
@@ -21,67 +29,47 @@ public class MethodExecutionAdvice {
         isOnlyCheckVisited = config.getInstrumentation().isOnlyCheckVisited();
     }
 
-    public static String getProcessId() {
-        String jvmName = ManagementFactory.getRuntimeMXBean().getName();
-        return jvmName.split("@")[0];
-    }
-
-    public static String getThreadId() {
-        return String.valueOf(Thread.currentThread().getId());
-    }
-
     public static String createExecutionContext(String methodSignature) {
-        // Format: [PID][TID] methodSignature
-        return String.format("[%s] [%s] %s", 
-            getProcessId(), 
-            getThreadId(), 
-            methodSignature);
+        StringBuilder sb = contextBuilder.get();
+        sb.setLength(0);
+
+        sb.append('[')
+                .append(PROCESS_ID)
+                .append("][")
+                .append(Thread.currentThread().getId())
+                .append("] ")
+                .append(methodSignature);
+
+        return sb.toString();
     }
 
     @Advice.OnMethodEnter
     public static boolean onEnter(@Advice.Origin String methodSignature) {
-        String contextualSignature = createExecutionContext(methodSignature);
-        
-        if (!isLimited) {
-            logEntry(contextualSignature);
-            return true;
+        if (isLimited) {
+            LongAdder counter = instrumentationCounts.get(methodSignature);
+            if (counter == null) {
+                counter = instrumentationCounts.computeIfAbsent(methodSignature, k -> new LongAdder());
+            }
+
+            if (counter.sum() >= maxInstrumentations) {
+                return false;
+            }
+            counter.increment();
         }
 
-        LongAdder counter = instrumentationCounts.get(methodSignature);
-        if (counter == null) {
-            counter = new LongAdder();
-            LongAdder existingCounter = instrumentationCounts.putIfAbsent(methodSignature, counter);
-            if (existingCounter != null) {
-                counter = existingCounter;
-            }
+        String contextualSignature = createExecutionContext(methodSignature);
+        String plainSignature = methodSignature;
+
+        if (!isOnlyCheckVisited || visitedMethods.add(plainSignature)) {
+            Logger.logTime(contextualSignature, "S");
         }
-        
-        long count = counter.sum();
-        if (count < maxInstrumentations) {
-            counter.increment();
-            logEntry(contextualSignature);
-            return true;
-        }
-        return false;
+        return true;
     }
 
     @Advice.OnMethodExit
     public static void onExit(@Advice.Origin String methodSignature, @Advice.Enter boolean wasLogged) {
-        if (wasLogged) {
-            logExit(createExecutionContext(methodSignature));
-        }
-    }
-
-    public static void logEntry(String contextualSignature) {
-        String methodSignature = contextualSignature.substring(contextualSignature.lastIndexOf("]") + 2);
-        if (!isOnlyCheckVisited || visitedMethods.add(methodSignature)) {
-            Logger.logTime(contextualSignature, "S");
-        }
-    }
-
-    public static void logExit(String contextualSignature) {
-        if (!isOnlyCheckVisited) {
-            Logger.logTime(contextualSignature, "E");
+        if (wasLogged && !isOnlyCheckVisited) {
+            Logger.logTime(createExecutionContext(methodSignature), "E");
         }
     }
 }
