@@ -2,7 +2,6 @@ package jib.services;
 
 import java.io.IOException;
 
-import jib.core.Instrumentation;
 import jib.models.AgentInfo;
 import jib.models.Configuration;
 import jib.services.external.TraceConverter;
@@ -20,8 +19,6 @@ public class AgentLifecycleManager {
 
     private static void registerShutdownHook(long startTime, Configuration config) {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            Instrumentation.shutdown();
-
             long endTime = Time.getTimeNanoSeconds();
             saveAgentData(startTime, endTime, config);
             convertLogFileToJson(config);
