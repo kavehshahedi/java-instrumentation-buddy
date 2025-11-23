@@ -1,11 +1,13 @@
 package jib.services;
 
+import java.net.URL;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import jib.utils.Time;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.config.Configurator;
 import jib.models.Configuration;
 
 public class Logger {
@@ -25,8 +27,27 @@ public class Logger {
         String logFileName = loggingInfo.getFile();
         System.setProperty("logFilename", logFileName);
 
-        LoggerContext ctx = (LoggerContext) LogManager.getContext(false);
-        ctx.reconfigure();
+        try {
+            URL configUrl = Logger.class.getClassLoader().getResource("log4j2.xml");
+            if (configUrl != null) {
+                try {
+                    Configurator.initialize(null, configUrl.toURI().toString());
+                } catch (Exception configEx) {
+                }
+            }
+
+            Object context = LogManager.getContext(false);
+            if (context instanceof LoggerContext) {
+                LoggerContext ctx = (LoggerContext) context;
+                ctx.reconfigure();
+            } else {
+                System.err.println("WARNING: Application is using a different logging framework. " +
+                        "Log4j2 reconfiguration skipped. Logging will continue with available configuration.");
+            }
+        } catch (Exception e) {
+            System.err.println("WARNING: Error initializing Log4j2: " + e.getMessage() +
+                    ". Logging will continue with default configuration.");
+        }
 
         logger = LogManager.getLogger(Logger.class);
 
