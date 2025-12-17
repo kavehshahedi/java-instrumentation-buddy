@@ -5,7 +5,6 @@ import java.io.IOException;
 import jib.models.AgentInfo;
 import jib.models.Configuration;
 import jib.services.external.TraceConverter;
-import jib.utils.Time;
 
 public class AgentLifecycleManager {
 
@@ -13,26 +12,33 @@ public class AgentLifecycleManager {
     }
 
     public static void trackLifetime(Configuration config) {
-        long startTime = Time.getTimeNanoSeconds();
+        long startTime = FastAsyncLogger.getStartTime();
         registerShutdownHook(startTime, config);
     }
 
     private static void registerShutdownHook(long startTime, Configuration config) {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            long endTime = Time.getTimeNanoSeconds();
+            long endTime = System.nanoTime() + getTimeOffset();
+
+            FastAsyncLogger.close();
+
             saveAgentData(startTime, endTime, config);
             convertLogFileToJson(config);
-
-            Logger.close();
         }));
+    }
+
+    private static long getTimeOffset() {
+        long currentTimeMillis = System.currentTimeMillis();
+        long currentNanoTime = System.nanoTime();
+        return (currentTimeMillis * 1_000_000) - currentNanoTime;
     }
 
     private static void saveAgentData(long startTime, long endTime, Configuration config) {
         AgentInfo agentInfo = new AgentInfo(
                 startTime,
                 endTime,
-                config.getLogging().isOptimizeTimestamp() ? Time.getOptimizedTimeOffset() : 0,
-                Logger.getMethodSignatureHashJson());
+                config.getLogging().isOptimizeTimestamp() ? getOptimizedTimeOffset() : 0,
+                FastAsyncLogger.getMethodSignatureHashJson());
 
         try {
             String jsonFile = config.getLogging().getFile().replace(".log", ".json");
@@ -40,6 +46,10 @@ public class AgentLifecycleManager {
         } catch (IOException e) {
             System.err.println("Error writing agent info: " + e.getMessage());
         }
+    }
+
+    private static long getOptimizedTimeOffset() {
+        return Long.parseLong(String.valueOf(System.currentTimeMillis()).substring(0, 4) + "000000000000000");
     }
 
     private static void convertLogFileToJson(Configuration config) {

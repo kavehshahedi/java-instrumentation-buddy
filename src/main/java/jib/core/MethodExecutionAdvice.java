@@ -5,18 +5,25 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
 import java.lang.management.ManagementFactory;
-import jib.services.Logger;
+import jib.services.FastAsyncLogger;
 import jib.models.Configuration;
 
 public class MethodExecutionAdvice {
     public static final String PROCESS_ID = initializeProcessId();
-    public static final ThreadLocal<StringBuilder> contextBuilder = ThreadLocal.withInitial(() -> new StringBuilder(256));
+    public static final ThreadLocal<Long> threadIdCache = ThreadLocal.withInitial(() -> Thread.currentThread().getId());
 
     public static final Set<String> visitedMethods = ConcurrentHashMap.newKeySet();
     public static final ConcurrentHashMap<String, LongAdder> instrumentationCounts = new ConcurrentHashMap<>();
     public static int maxInstrumentations;
     public static boolean isLimited;
     public static boolean isOnlyCheckVisited;
+
+    public static final long TIME_OFFSET;
+    static {
+        long currentTimeMillis = System.currentTimeMillis();
+        long currentNanoTime = System.nanoTime();
+        TIME_OFFSET = (currentTimeMillis * 1_000_000) - currentNanoTime;
+    }
 
     public static String initializeProcessId() {
         String jvmName = ManagementFactory.getRuntimeMXBean().getName();
@@ -29,20 +36,6 @@ public class MethodExecutionAdvice {
         isOnlyCheckVisited = config.getInstrumentation().isOnlyCheckVisited();
     }
 
-    public static String createExecutionContext(String methodSignature) {
-        StringBuilder sb = contextBuilder.get();
-        sb.setLength(0);
-
-        sb.append('[')
-                .append(PROCESS_ID)
-                .append("][")
-                .append(Thread.currentThread().getId())
-                .append("] ")
-                .append(methodSignature);
-
-        return sb.toString();
-    }
-
     @Advice.OnMethodEnter
     public static boolean onEnter(@Advice.Origin String methodSignature) {
         if (isLimited) {
@@ -50,18 +43,15 @@ public class MethodExecutionAdvice {
             if (counter == null) {
                 counter = instrumentationCounts.computeIfAbsent(methodSignature, k -> new LongAdder());
             }
-
             if (counter.sum() >= maxInstrumentations) {
                 return false;
             }
             counter.increment();
         }
 
-        String contextualSignature = createExecutionContext(methodSignature);
-        String plainSignature = methodSignature;
-
-        if (!isOnlyCheckVisited || visitedMethods.add(plainSignature)) {
-            Logger.logTime(contextualSignature, "S");
+        if (!isOnlyCheckVisited || visitedMethods.add(methodSignature)) {
+            long timestamp = System.nanoTime() + TIME_OFFSET;
+            FastAsyncLogger.log(timestamp, (byte) 0, threadIdCache.get(), methodSignature);
         }
         return true;
     }
@@ -69,7 +59,8 @@ public class MethodExecutionAdvice {
     @Advice.OnMethodExit
     public static void onExit(@Advice.Origin String methodSignature, @Advice.Enter boolean wasLogged) {
         if (wasLogged && !isOnlyCheckVisited) {
-            Logger.logTime(createExecutionContext(methodSignature), "E");
+            long timestamp = System.nanoTime() + TIME_OFFSET;
+            FastAsyncLogger.log(timestamp, (byte) 1, threadIdCache.get(), methodSignature);
         }
     }
 }

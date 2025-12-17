@@ -18,7 +18,7 @@ public class TraceConverter {
 
     private Configuration config;
 
-    private static final Pattern REGEX = Pattern.compile("\\[(\\d+)\\] (S|E) \\[(\\d+)\\] \\[(\\d+)\\] ([\\w\\W\\s.]+)");
+    private static final Pattern REGEX = Pattern.compile("\\[(\\d+)\\] (S|E) \\[(\\d+)\\]\\[(\\d+)\\] \"([\\w\\W\\s.]+)\"");
     private final String inputPath;
     private final String outputPath;
     private final int batchSize;
@@ -61,9 +61,13 @@ public class TraceConverter {
                 }
             }
 
-            JsonFileHandler.writeJsonArrayInBatches(outputPath, entries.iterator(), batchSize);
+            if (!entries.isEmpty()) {
+                JsonFileHandler.writeJsonArrayInBatches(outputPath, entries.iterator(), batchSize);
+            }
         } catch (IOException e) {
-            System.err.println("Error reading file: " + e.getMessage());
+            System.err.println("Error converting log file: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("Unexpected error during conversion: " + e.getMessage());
         }
     }
 }
