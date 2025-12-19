@@ -34,17 +34,19 @@ public class AgentLifecycleManager {
     }
 
     private static void saveAgentData(long startTime, long endTime, Configuration config) {
-        AgentInfo agentInfo = new AgentInfo(
-                startTime,
-                endTime,
-                config.getLogging().isOptimizeTimestamp() ? getOptimizedTimeOffset() : 0,
-                FastAsyncLogger.getMethodSignatureHashJson());
+        if (config.getLogging().isUseHash()) {
+            AgentInfo agentInfo = new AgentInfo(
+                    startTime,
+                    endTime,
+                    config.getLogging().isOptimizeTimestamp() ? getOptimizedTimeOffset() : 0,
+                    FastAsyncLogger.getMethodSignatureHashJson());
 
-        try {
-            String jsonFile = config.getLogging().getFile().replace(".log", ".json");
-            JsonFileHandler.writeJsonObjectToFile(jsonFile, agentInfo);
-        } catch (IOException e) {
-            System.err.println("Error writing agent info: " + e.getMessage());
+            try {
+                String jsonFile = config.getLogging().getFile().replace(".log", ".json");
+                JsonFileHandler.writeJsonObjectToFile(jsonFile, agentInfo);
+            } catch (IOException e) {
+                System.err.println("Error writing agent info: " + e.getMessage());
+            }
         }
     }
 

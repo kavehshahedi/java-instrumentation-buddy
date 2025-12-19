@@ -61,6 +61,18 @@ The `logging` section controls how the agent generates log files:
 - `optimizeTimestamp`: When set to `true`, optimizes timestamp handling for improved performance. Basically, it removes the first 4 digits of the timestamp to reduce the log file size.
   - Default: `false`
 
+- `batchSize`: Specifies the number of log entries to batch together before writing to the queue. Larger values can improve throughput but may increase memory usage and latency.
+  - Default: `4096`
+
+- `queueDepth`: Sets the maximum number of batches that can be queued for writing. This acts as a buffer between log generation and disk I/O. Increase this value if you experience dropped logs under high load.
+  - Default: `2000`
+
+- `flushIntervalMs`: Controls how often (in milliseconds) the logger flushes partially filled batches to the queue. Lower values reduce latency but may increase I/O overhead.
+  - Default: `100`
+
+- `bufferSize`: Sets the size of the direct byte buffer used for writing log entries to disk (in bytes). Larger buffers can improve write performance but consume more memory.
+  - Default: `2097152` (2MB)
+
 #### Instrumentation
 
 The `instrumentation` section defines which parts of your code the agent will instrument:

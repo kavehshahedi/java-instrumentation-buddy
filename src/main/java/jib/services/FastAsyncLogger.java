@@ -15,10 +15,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import jib.models.Configuration;
 
 public class FastAsyncLogger {
-    private static final int BATCH_SIZE = 4096;
-    private static final int QUEUE_DEPTH = 2000;
-    private static final int FLUSH_INTERVAL_MS = 100;
-    private static final int BUFFER_SIZE = 2 * 1024 * 1024; // 2MB
+    private static int BATCH_SIZE = 4096; // 4096 entries
+    private static int QUEUE_DEPTH = 2000; // 2000 entries
+    private static int FLUSH_INTERVAL_MS = 100; // 100ms
+    private static int BUFFER_SIZE = 2 * 1024 * 1024; // 2MB
 
     private static BlockingQueue<List<LogEntry>> queue;
     private static List<LogEntry> buffer;
@@ -58,6 +58,10 @@ public class FastAsyncLogger {
     public static void initialize(Configuration.Logging config, String pid) {
         useHash = config.isUseHash();
         optimizeTimestamp = config.isOptimizeTimestamp();
+        BATCH_SIZE = config.getBatchSize();
+        QUEUE_DEPTH = config.getQueueDepth();
+        FLUSH_INTERVAL_MS = config.getFlushIntervalMs();
+        BUFFER_SIZE = config.getBufferSize();
         processId = pid;
         processIdBytes = processId.getBytes(StandardCharsets.UTF_8);
         String logFileName = config.getFile();

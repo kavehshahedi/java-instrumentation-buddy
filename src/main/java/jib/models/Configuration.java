@@ -63,6 +63,10 @@ public class Configuration {
         private long timestamp = -1;
         private boolean useHash = false;
         private boolean optimizeTimestamp = false;
+        private int batchSize = 4096;
+        private int queueDepth = 2000;
+        private int flushIntervalMs = 100;
+        private int bufferSize = 2 * 1024 * 1024; // 2MB
 
         public Logging() {
         }
@@ -124,13 +128,49 @@ public class Configuration {
             this.optimizeTimestamp = optimizeTimestamp;
         }
 
+        public int getBatchSize() {
+            return batchSize;
+        }
+
+        public void setBatchSize(int batchSize) {
+            this.batchSize = batchSize > 0 ? batchSize : 4096;
+        }
+
+        public int getQueueDepth() {
+            return queueDepth;
+        }
+
+        public void setQueueDepth(int queueDepth) {
+            this.queueDepth = queueDepth > 0 ? queueDepth : 2000;
+        }
+
+        public int getFlushIntervalMs() {
+            return flushIntervalMs;
+        }
+
+        public void setFlushIntervalMs(int flushIntervalMs) {
+            this.flushIntervalMs = flushIntervalMs > 0 ? flushIntervalMs : 100;
+        }
+
+        public int getBufferSize() {
+            return bufferSize;
+        }
+
+        public void setBufferSize(int bufferSize) {
+            this.bufferSize = bufferSize > 0 ? bufferSize : 2 * 1024 * 1024;
+        }
+
         @Override
         public String toString() {
             return "\t\tLevel: " + level +
             "\n\t\tFile: " + file +
             "\n\t\tAdd Timestamp To File Names: " + addTimestampToFileNames +
             "\n\t\tUse Hash: " + useHash + 
-            "\n\t\tOptimize Timestamp: " + optimizeTimestamp;
+            "\n\t\tOptimize Timestamp: " + optimizeTimestamp +
+            "\n\t\tBatch Size: " + batchSize +
+            "\n\t\tQueue Depth: " + queueDepth +
+            "\n\t\tFlush Interval Ms: " + flushIntervalMs +
+            "\n\t\tBuffer Size: " + bufferSize;
         }
     }
 
