@@ -64,6 +64,10 @@
                                     <pattern>org.yaml.snakeyaml</pattern>
                                     <shadedPattern>jib.shaded.org.yaml.snakeyaml</shadedPattern>
                                 </relocation>
+                                <relocation>
+                                    <pattern>net.bytebuddy</pattern>
+                                    <shadedPattern>jib.shaded.net.bytebuddy</shadedPattern>
+                                </relocation>
                             </relocations>
                         </configuration>
                     </execution>
