@@ -62,12 +62,10 @@ public class MethodMatcherHelper {
             targetPackageMatcher = ElementMatchers.nameStartsWith(instrumentation.getTargetPackage());
         }
 
-        // Exclude the agent class from instrumentation (along with logging and other)
+        // Exclude the agent class from instrumentation
         targetPackageMatcher = targetPackageMatcher
                 .and(ElementMatchers
                         .not(ElementMatchers.nameStartsWith(JavaInstrumentationBuddy.class.getPackage().getName())));
-        targetPackageMatcher = targetPackageMatcher
-                .and(ElementMatchers.not(ElementMatchers.nameStartsWith("org.apache.logging.log4j")));
 
         return targetPackageMatcher;
     }

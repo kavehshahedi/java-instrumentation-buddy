@@ -8,20 +8,11 @@ import jib.utils.Time;
 public class Configuration {
 
     // Constants
-    public static final String DEFAULT_LOGGING_LEVEL = "INFO";
     public static final String DEFAULT_LOG_FILE = "app.log";
 
     private Logging logging = new Logging();
     private Instrumentation instrumentation = new Instrumentation();
     private Misc misc = new Misc();
-
-    public Configuration() {
-    }
-
-    public Configuration(Logging logging, Instrumentation instrumentation) {
-        this.logging = logging != null ? logging : new Logging();
-        this.instrumentation = instrumentation != null ? instrumentation : new Instrumentation();
-    }
 
     // Getters and setters
     public Logging getLogging() {
@@ -57,7 +48,6 @@ public class Configuration {
     }
 
     public static class Logging {
-        private String level = DEFAULT_LOGGING_LEVEL;
         private String file = DEFAULT_LOG_FILE;
         private boolean addTimestampToFileNames = false;
         private long timestamp = -1;
@@ -68,26 +58,7 @@ public class Configuration {
         private int flushIntervalMs = 100;
         private int bufferSize = 2 * 1024 * 1024; // 2MB
 
-        public Logging() {
-        }
-
-        public Logging(String level, String file, boolean addTimestampToFileNames, boolean useHash, boolean optimizeTimestamp) {
-            this.level = level != null ? level : DEFAULT_LOGGING_LEVEL;
-            this.file = file != null ? file : DEFAULT_LOG_FILE;
-            this.addTimestampToFileNames = addTimestampToFileNames;
-            this.useHash = useHash;
-            this.optimizeTimestamp = optimizeTimestamp;
-        }
-    
         // Getters and setters
-        public String getLevel() {
-            return level != null ? level : DEFAULT_LOGGING_LEVEL;
-        }
-    
-        public void setLevel(String level) {
-            this.level = level != null ? level : DEFAULT_LOGGING_LEVEL;
-        }
-    
         public String getFile() {
             String fileName = file != null ? file : DEFAULT_LOG_FILE;
             if (addTimestampToFileNames) {
@@ -162,8 +133,7 @@ public class Configuration {
 
         @Override
         public String toString() {
-            return "\t\tLevel: " + level +
-            "\n\t\tFile: " + file +
+            return "\t\tFile: " + file +
             "\n\t\tAdd Timestamp To File Names: " + addTimestampToFileNames +
             "\n\t\tUse Hash: " + useHash + 
             "\n\t\tOptimize Timestamp: " + optimizeTimestamp +
@@ -180,17 +150,6 @@ public class Configuration {
         private boolean onlyCheckVisited = false;
         private boolean instrumentMainMethod = false;
         private int maxNumberOfInstrumentations = -1;
-
-        public Instrumentation() {
-        }
-
-        public Instrumentation(String targetPackage, TargetMethods targetMethods, boolean onlyCheckVisited, boolean instrumentMainMethod, int maxNumberOfInstrumentations) {
-            this.targetPackage = targetPackage != null ? targetPackage : "";
-            this.targetMethods = targetMethods != null ? targetMethods : new TargetMethods();
-            this.onlyCheckVisited = onlyCheckVisited;
-            this.instrumentMainMethod = instrumentMainMethod;
-            this.maxNumberOfInstrumentations = maxNumberOfInstrumentations;
-        }
 
         // Getters and setters
         public String getTargetPackage() {
@@ -246,14 +205,6 @@ public class Configuration {
             private List<String> instrument = Collections.emptyList(); // Default empty list
             private List<String> ignore = Collections.emptyList(); // Default empty list
 
-            public TargetMethods() {
-            }
-
-            public TargetMethods(List<String> instrument, List<String> ignore) {
-                this.instrument = instrument != null ? instrument : Collections.emptyList();
-                this.ignore = ignore != null ? ignore : Collections.emptyList();
-            }
-
             // Getters and setters
             public List<String> getInstrument() {
                 return instrument != null ? instrument : Collections.emptyList();
@@ -293,13 +244,6 @@ public class Configuration {
 
     public static class Misc {
         private boolean convertToJson = false;
-
-        public Misc() {
-        }
-
-        public Misc(boolean convertToJson) {
-            this.convertToJson = convertToJson;
-        }
 
         // Getters and setters
         public boolean isConvertToJson() {

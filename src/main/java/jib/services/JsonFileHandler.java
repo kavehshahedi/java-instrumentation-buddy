@@ -11,23 +11,7 @@ import jib.utils.IJsonSerializable;
 
 public class JsonFileHandler {
     private static final String INDENT = "    "; // 4 spaces
-    
-    public static void writeJsonArrayToFile(String filePath, List<? extends IJsonSerializable> items) throws IOException {
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(filePath))) {
-            writer.write("[\n");
-            
-            for (int i = 0; i < items.size(); i++) {
-                writer.write(items.get(i).toJson(1));
-                if (i < items.size() - 1) {
-                    writer.write(",");
-                }
-                writer.write("\n");
-            }
-            
-            writer.write("]");
-        }
-    }
-    
+
     public static void writeJsonArrayInBatches(String filePath, Iterator<? extends IJsonSerializable> itemIterator, 
                                              int batchSize) throws IOException {
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(filePath))) {

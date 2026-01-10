@@ -286,9 +286,9 @@ public class FastAsyncLogger {
 
             String hash = new String(entry.getValue(), StandardCharsets.UTF_8);
             sb.append("  \"")
-                    .append(entry.getKey().replace("\"", "\\\""))
+                    .append(JsonFileHandler.escapeJsonString(entry.getKey()))
                     .append("\": \"")
-                    .append(hash.replace("\"", "\\\""))
+                    .append(JsonFileHandler.escapeJsonString(hash))
                     .append("\"");
         }
 
