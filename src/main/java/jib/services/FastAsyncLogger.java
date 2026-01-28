@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import jib.models.Configuration;
 
@@ -36,7 +37,6 @@ public class FastAsyncLogger {
     private static final int ALPHABET_SIZE = ALPHABET.length;
 
     private static long startTime;
-    private static Thread flusherThread;
     private static long optimizedOffset;
     private static String processId;
     private static byte[] processIdBytes;
@@ -87,12 +87,7 @@ public class FastAsyncLogger {
 
         writerThread = new Thread(FastAsyncLogger::writerLoop, "FastAsyncLogger-Writer");
         writerThread.setDaemon(true);
-        writerThread.setPriority(Thread.MAX_PRIORITY);
         writerThread.start();
-
-        flusherThread = new Thread(FastAsyncLogger::flusherLoop, "FastAsyncLogger-Flusher");
-        flusherThread.setDaemon(true);
-        flusherThread.start();
     }
 
     public static void log(long timestamp, byte type, long threadId, String methodSig) {
@@ -113,11 +108,9 @@ public class FastAsyncLogger {
 
         try {
             while (running || !queue.isEmpty()) {
-                List<LogEntry> batch = queue.poll();
+                List<LogEntry> batch = queue.poll(FLUSH_INTERVAL_MS, TimeUnit.MILLISECONDS);
                 if (batch == null) {
-                    if (!running && queue.isEmpty())
-                        break;
-                    Thread.yield();
+                    flushBuffer();
                     continue;
                 }
 
@@ -153,23 +146,15 @@ public class FastAsyncLogger {
         } catch (IOException e) {
             System.err.println("Writer error: " + e.getMessage());
             e.printStackTrace();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
-    private static void flusherLoop() {
-        while (running) {
-            try {
-                Thread.sleep(FLUSH_INTERVAL_MS);
-                synchronized (buffer) {
-                    if (!buffer.isEmpty() && buffer.size() < BATCH_SIZE) {
-                        if (queue.offer(new ArrayList<>(buffer))) {
-                            buffer.clear();
-                        }
-                    }
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
+    private static void flushBuffer() {
+        synchronized (buffer) {
+            if (!buffer.isEmpty() && queue.offer(new ArrayList<>(buffer))) {
+                buffer.clear();
             }
         }
     }
