@@ -6,6 +6,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -107,37 +108,18 @@ public class FastAsyncLogger {
         byte[] tempBuffer = new byte[512];
 
         try {
-            while (running || !queue.isEmpty()) {
+            while (running) {
                 List<LogEntry> batch = queue.poll(FLUSH_INTERVAL_MS, TimeUnit.MILLISECONDS);
                 if (batch == null) {
                     flushBuffer();
-                    continue;
+                } else {
+                    writeBatch(batch, byteBuffer, tempBuffer);
                 }
+            }
 
-                byteBuffer.clear();
-
-                for (LogEntry entry : batch) {
-                    int len = formatEntryToBytes(entry, tempBuffer);
-                    if (byteBuffer.remaining() < len) {
-                        byteBuffer.flip();
-                        try {
-                            fileChannel.write(byteBuffer);
-                        } catch (java.nio.channels.ClosedChannelException e) {
-                            return;
-                        }
-                        byteBuffer.clear();
-                    }
-                    byteBuffer.put(tempBuffer, 0, len);
-                }
-
-                if (byteBuffer.position() > 0) {
-                    byteBuffer.flip();
-                    try {
-                        fileChannel.write(byteBuffer);
-                    } catch (java.nio.channels.ClosedChannelException e) {
-                        return;
-                    }
-                }
+            flushBuffer();
+            for (int pending = queue.size(); pending > 0; pending--) {
+                writeBatch(queue.poll(), byteBuffer, tempBuffer);
             }
 
             if (fileChannel.isOpen()) {
@@ -148,6 +130,25 @@ public class FastAsyncLogger {
             e.printStackTrace();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private static void writeBatch(List<LogEntry> batch, ByteBuffer byteBuffer, byte[] tempBuffer) throws IOException {
+        byteBuffer.clear();
+
+        for (LogEntry entry : batch) {
+            int len = formatEntryToBytes(entry, tempBuffer);
+            if (byteBuffer.remaining() < len) {
+                byteBuffer.flip();
+                fileChannel.write(byteBuffer);
+                byteBuffer.clear();
+            }
+            byteBuffer.put(tempBuffer, 0, len);
+        }
+
+        if (byteBuffer.position() > 0) {
+            byteBuffer.flip();
+            fileChannel.write(byteBuffer);
         }
     }
 
@@ -293,13 +294,7 @@ public class FastAsyncLogger {
 
     public static void close() {
         running = false;
-
-        synchronized (buffer) {
-            if (!buffer.isEmpty()) {
-                queue.offer(new ArrayList<>(buffer));
-                buffer.clear();
-            }
-        }
+        queue.offer(Collections.emptyList());
 
         try {
             writerThread.join();
