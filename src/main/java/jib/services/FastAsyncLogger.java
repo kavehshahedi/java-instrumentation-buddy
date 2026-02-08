@@ -21,12 +21,14 @@ public class FastAsyncLogger {
     private static int QUEUE_DEPTH = 2000; // 2000 entries
     private static int FLUSH_INTERVAL_MS = 100; // 100ms
     private static int BUFFER_SIZE = 2 * 1024 * 1024; // 2MB
+    private static final int MAX_ENTRY_OVERHEAD = 64;
 
     private static BlockingQueue<List<LogEntry>> queue;
     private static List<LogEntry> buffer;
     private static Thread writerThread;
     private static FileChannel fileChannel;
     private static FileOutputStream fileOutputStream;
+    private static byte[] scratch = new byte[512];
     private static volatile boolean running = true;
 
     private static boolean useHash = false;
@@ -105,7 +107,6 @@ public class FastAsyncLogger {
 
     private static void writerLoop() {
         ByteBuffer byteBuffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
-        byte[] tempBuffer = new byte[512];
 
         try {
             while (running) {
@@ -113,13 +114,13 @@ public class FastAsyncLogger {
                 if (batch == null) {
                     flushBuffer();
                 } else {
-                    writeBatch(batch, byteBuffer, tempBuffer);
+                    writeBatch(batch, byteBuffer);
                 }
             }
 
             flushBuffer();
             for (int pending = queue.size(); pending > 0; pending--) {
-                writeBatch(queue.poll(), byteBuffer, tempBuffer);
+                writeBatch(queue.poll(), byteBuffer);
             }
 
             if (fileChannel.isOpen()) {
@@ -133,21 +134,28 @@ public class FastAsyncLogger {
         }
     }
 
-    private static void writeBatch(List<LogEntry> batch, ByteBuffer byteBuffer, byte[] tempBuffer) throws IOException {
-        byteBuffer.clear();
-
+    private static void writeBatch(List<LogEntry> batch, ByteBuffer byteBuffer) throws IOException {
         for (LogEntry entry : batch) {
-            int len = formatEntryToBytes(entry, tempBuffer);
+            int len = formatEntryToBytes(entry);
             if (byteBuffer.remaining() < len) {
                 byteBuffer.flip();
-                fileChannel.write(byteBuffer);
+                writeFully(byteBuffer);
                 byteBuffer.clear();
             }
-            byteBuffer.put(tempBuffer, 0, len);
+            if (byteBuffer.remaining() < len) {
+                writeFully(ByteBuffer.wrap(scratch, 0, len));
+            } else {
+                byteBuffer.put(scratch, 0, len);
+            }
         }
 
-        if (byteBuffer.position() > 0) {
-            byteBuffer.flip();
+        byteBuffer.flip();
+        writeFully(byteBuffer);
+        byteBuffer.clear();
+    }
+
+    private static void writeFully(ByteBuffer byteBuffer) throws IOException {
+        while (byteBuffer.hasRemaining()) {
             fileChannel.write(byteBuffer);
         }
     }
@@ -160,7 +168,19 @@ public class FastAsyncLogger {
         }
     }
 
-    private static int formatEntryToBytes(LogEntry entry, byte[] buffer) {
+    private static int formatEntryToBytes(LogEntry entry) {
+        byte[] sigBytes;
+        if (useHash) {
+            sigBytes = getMethodHashBytes(entry.methodSig);
+        } else {
+            sigBytes = getMethodSigBytes(entry.methodSig);
+        }
+
+        int maxLength = MAX_ENTRY_OVERHEAD + processIdBytes.length + sigBytes.length;
+        if (scratch.length < maxLength) {
+            scratch = new byte[maxLength];
+        }
+        byte[] buffer = scratch;
         int pos = 0;
 
         // [
@@ -195,12 +215,6 @@ public class FastAsyncLogger {
 
         // method signature or hash
         buffer[pos++] = '"';
-        byte[] sigBytes;
-        if (useHash) {
-            sigBytes = getMethodHashBytes(entry.methodSig);
-        } else {
-            sigBytes = getMethodSigBytes(entry.methodSig);
-        }
         System.arraycopy(sigBytes, 0, buffer, pos, sigBytes.length);
         pos += sigBytes.length;
         buffer[pos++] = '"';
