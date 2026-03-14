@@ -24,7 +24,7 @@ public class FastAsyncLogger {
     private static final int MAX_ENTRY_OVERHEAD = 64;
 
     private static BlockingQueue<List<LogEntry>> queue;
-    private static List<LogEntry> buffer;
+    private static Stripe[] stripes;
     private static Thread writerThread;
     private static FileChannel fileChannel;
     private static FileOutputStream fileOutputStream;
@@ -58,6 +58,10 @@ public class FastAsyncLogger {
         }
     }
 
+    private static final class Stripe {
+        List<LogEntry> entries = new ArrayList<>(BATCH_SIZE);
+    }
+
     public static void initialize(Configuration.Logging config, String pid) {
         useHash = config.isUseHash();
         optimizeTimestamp = config.isOptimizeTimestamp();
@@ -74,7 +78,10 @@ public class FastAsyncLogger {
                     String.valueOf(System.currentTimeMillis()).substring(0, 4) + "000000000000000");
         }
 
-        buffer = new ArrayList<>(BATCH_SIZE);
+        stripes = new Stripe[Integer.highestOneBit(Runtime.getRuntime().availableProcessors() * 2 - 1)];
+        for (int i = 0; i < stripes.length; i++) {
+            stripes[i] = new Stripe();
+        }
         queue = new ArrayBlockingQueue<>(QUEUE_DEPTH);
 
         try {
@@ -95,12 +102,11 @@ public class FastAsyncLogger {
 
     public static void log(long timestamp, byte type, long threadId, String methodSig) {
         LogEntry entry = new LogEntry(timestamp, type, threadId, methodSig);
-        synchronized (buffer) {
-            buffer.add(entry);
-            if (buffer.size() >= BATCH_SIZE) {
-                if (queue.offer(new ArrayList<>(buffer))) {
-                    buffer.clear();
-                }
+        Stripe stripe = stripes[(int) threadId & (stripes.length - 1)];
+        synchronized (stripe) {
+            stripe.entries.add(entry);
+            if (stripe.entries.size() >= BATCH_SIZE && queue.offer(stripe.entries)) {
+                stripe.entries = new ArrayList<>(BATCH_SIZE);
             }
         }
     }
@@ -112,13 +118,13 @@ public class FastAsyncLogger {
             while (running) {
                 List<LogEntry> batch = queue.poll(FLUSH_INTERVAL_MS, TimeUnit.MILLISECONDS);
                 if (batch == null) {
-                    flushBuffer();
+                    flushStripes();
                 } else {
                     writeBatch(batch, byteBuffer);
                 }
             }
 
-            flushBuffer();
+            flushStripes();
             for (int pending = queue.size(); pending > 0; pending--) {
                 writeBatch(queue.poll(), byteBuffer);
             }
@@ -160,10 +166,12 @@ public class FastAsyncLogger {
         }
     }
 
-    private static void flushBuffer() {
-        synchronized (buffer) {
-            if (!buffer.isEmpty() && queue.offer(new ArrayList<>(buffer))) {
-                buffer.clear();
+    private static void flushStripes() {
+        for (Stripe stripe : stripes) {
+            synchronized (stripe) {
+                if (!stripe.entries.isEmpty() && queue.offer(stripe.entries)) {
+                    stripe.entries = new ArrayList<>(BATCH_SIZE);
+                }
             }
         }
     }
