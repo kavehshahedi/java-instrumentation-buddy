@@ -20,10 +20,10 @@ public class AgentLifecycleManager {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             long endTime = System.nanoTime() + getTimeOffset();
 
-            FastAsyncLogger.close();
-
-            saveAgentData(startTime, endTime, config);
-            convertLogFileToJson(config);
+            if (FastAsyncLogger.close()) {
+                saveAgentData(startTime, endTime, config);
+                convertLogFileToJson(config);
+            }
         }));
     }
 

@@ -30,7 +30,9 @@ public class FastAsyncLogger {
     private static FileChannel fileChannel;
     private static FileOutputStream fileOutputStream;
     private static byte[] scratch = new byte[512];
-    private static volatile boolean running = true;
+    private static String logFileName;
+    private static volatile boolean started;
+    private static volatile boolean stopped;
     private static final AtomicLong droppedEvents = new AtomicLong();
 
     private static boolean useHash = false;
@@ -64,7 +66,7 @@ public class FastAsyncLogger {
         List<LogEntry> entries = new ArrayList<>(BATCH_SIZE);
     }
 
-    public static boolean initialize(Configuration.Logging config, String pid) {
+    public static void initialize(Configuration.Logging config, String pid) {
         useHash = config.isUseHash();
         optimizeTimestamp = config.isOptimizeTimestamp();
         BATCH_SIZE = config.getBatchSize();
@@ -73,7 +75,7 @@ public class FastAsyncLogger {
         BUFFER_SIZE = config.getBufferSize();
         processId = pid;
         processIdBytes = processId.getBytes(StandardCharsets.UTF_8);
-        String logFileName = config.getFile();
+        logFileName = config.getFile();
 
         if (optimizeTimestamp) {
             optimizedOffset = Long.parseLong(
@@ -85,25 +87,31 @@ public class FastAsyncLogger {
             stripes[i] = new Stripe();
         }
         queue = new ArrayBlockingQueue<>(QUEUE_DEPTH);
-
-        try {
-            fileOutputStream = new FileOutputStream(logFileName);
-            fileChannel = fileOutputStream.getChannel();
-        } catch (IOException e) {
-            System.err.println("Failed to open log file: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
-            e.printStackTrace();
-            return false;
-        }
-
         startTime = System.nanoTime() + getTimeOffset();
+    }
 
-        writerThread = new Thread(FastAsyncLogger::writerLoop, "FastAsyncLogger-Writer");
-        writerThread.setDaemon(true);
-        writerThread.start();
-        return true;
+    private static synchronized boolean start() {
+        if (!started && !stopped) {
+            try {
+                fileOutputStream = new FileOutputStream(logFileName);
+                fileChannel = fileOutputStream.getChannel();
+                writerThread = new Thread(FastAsyncLogger::writerLoop, "FastAsyncLogger-Writer");
+                writerThread.setDaemon(true);
+                writerThread.start();
+                started = true;
+            } catch (IOException e) {
+                System.err.println("Failed to open log file: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
+                e.printStackTrace();
+                stopped = true;
+            }
+        }
+        return started;
     }
 
     public static void log(long timestamp, byte type, long threadId, String methodSig) {
+        if (!started && (stopped || !start())) {
+            return;
+        }
         LogEntry entry = new LogEntry(timestamp, type, threadId, methodSig);
         Stripe stripe = stripes[(int) threadId & (stripes.length - 1)];
         synchronized (stripe) {
@@ -123,7 +131,7 @@ public class FastAsyncLogger {
         ByteBuffer byteBuffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
 
         try {
-            while (running) {
+            while (!stopped) {
                 List<LogEntry> batch = queue.poll(FLUSH_INTERVAL_MS, TimeUnit.MILLISECONDS);
                 if (batch == null) {
                     flushStripes();
@@ -331,8 +339,11 @@ public class FastAsyncLogger {
         return (currentTimeMillis * 1_000_000) - currentNanoTime;
     }
 
-    public static void close() {
-        running = false;
+    public static synchronized boolean close() {
+        stopped = true;
+        if (!started) {
+            return false;
+        }
         queue.offer(Collections.emptyList());
 
         try {
@@ -363,5 +374,6 @@ public class FastAsyncLogger {
         if (droppedEvents.get() > 0) {
             System.err.println("Dropped " + droppedEvents.get() + " trace events because the writer could not keep up");
         }
+        return true;
     }
 }
