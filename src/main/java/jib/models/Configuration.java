@@ -54,7 +54,7 @@ public class Configuration {
         private boolean useHash = false;
         private boolean optimizeTimestamp = false;
         private int batchSize = 4096;
-        private int queueDepth = 2000;
+        private int queueDepth = 64;
         private int flushIntervalMs = 100;
         private int bufferSize = 2 * 1024 * 1024; // 2MB
 
@@ -112,7 +112,7 @@ public class Configuration {
         }
 
         public void setQueueDepth(int queueDepth) {
-            this.queueDepth = queueDepth > 0 ? queueDepth : 2000;
+            this.queueDepth = queueDepth > 0 ? queueDepth : 64;
         }
 
         public int getFlushIntervalMs() {

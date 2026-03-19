@@ -39,6 +39,7 @@ public class AgentLifecycleManager {
                     startTime,
                     endTime,
                     config.getLogging().isOptimizeTimestamp() ? getOptimizedTimeOffset() : 0,
+                    FastAsyncLogger.getDroppedEvents(),
                     FastAsyncLogger.getMethodSignatureHashJson());
 
             try {

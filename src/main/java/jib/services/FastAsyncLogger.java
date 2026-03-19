@@ -14,11 +14,12 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import jib.models.Configuration;
 
 public class FastAsyncLogger {
     private static int BATCH_SIZE = 4096; // 4096 entries
-    private static int QUEUE_DEPTH = 2000; // 2000 entries
+    private static int QUEUE_DEPTH = 64; // 64 batches
     private static int FLUSH_INTERVAL_MS = 100; // 100ms
     private static int BUFFER_SIZE = 2 * 1024 * 1024; // 2MB
     private static final int MAX_ENTRY_OVERHEAD = 64;
@@ -30,6 +31,7 @@ public class FastAsyncLogger {
     private static FileOutputStream fileOutputStream;
     private static byte[] scratch = new byte[512];
     private static volatile boolean running = true;
+    private static final AtomicLong droppedEvents = new AtomicLong();
 
     private static boolean useHash = false;
     private static boolean optimizeTimestamp = false;
@@ -62,7 +64,7 @@ public class FastAsyncLogger {
         List<LogEntry> entries = new ArrayList<>(BATCH_SIZE);
     }
 
-    public static void initialize(Configuration.Logging config, String pid) {
+    public static boolean initialize(Configuration.Logging config, String pid) {
         useHash = config.isUseHash();
         optimizeTimestamp = config.isOptimizeTimestamp();
         BATCH_SIZE = config.getBatchSize();
@@ -90,7 +92,7 @@ public class FastAsyncLogger {
         } catch (IOException e) {
             System.err.println("Failed to open log file: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
             e.printStackTrace();
-            return;
+            return false;
         }
 
         startTime = System.nanoTime() + getTimeOffset();
@@ -98,6 +100,7 @@ public class FastAsyncLogger {
         writerThread = new Thread(FastAsyncLogger::writerLoop, "FastAsyncLogger-Writer");
         writerThread.setDaemon(true);
         writerThread.start();
+        return true;
     }
 
     public static void log(long timestamp, byte type, long threadId, String methodSig) {
@@ -105,8 +108,13 @@ public class FastAsyncLogger {
         Stripe stripe = stripes[(int) threadId & (stripes.length - 1)];
         synchronized (stripe) {
             stripe.entries.add(entry);
-            if (stripe.entries.size() >= BATCH_SIZE && queue.offer(stripe.entries)) {
-                stripe.entries = new ArrayList<>(BATCH_SIZE);
+            if (stripe.entries.size() >= BATCH_SIZE) {
+                if (queue.offer(stripe.entries)) {
+                    stripe.entries = new ArrayList<>(BATCH_SIZE);
+                } else {
+                    droppedEvents.addAndGet(stripe.entries.size());
+                    stripe.entries.clear();
+                }
             }
         }
     }
@@ -124,10 +132,9 @@ public class FastAsyncLogger {
                 }
             }
 
+            writePending(byteBuffer);
             flushStripes();
-            for (int pending = queue.size(); pending > 0; pending--) {
-                writeBatch(queue.poll(), byteBuffer);
-            }
+            writePending(byteBuffer);
 
             if (fileChannel.isOpen()) {
                 fileChannel.force(false);
@@ -137,6 +144,12 @@ public class FastAsyncLogger {
             e.printStackTrace();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private static void writePending(ByteBuffer byteBuffer) throws IOException {
+        for (int pending = queue.size(); pending > 0; pending--) {
+            writeBatch(queue.poll(), byteBuffer);
         }
     }
 
@@ -308,6 +321,10 @@ public class FastAsyncLogger {
         return startTime;
     }
 
+    public static long getDroppedEvents() {
+        return droppedEvents.get();
+    }
+
     private static long getTimeOffset() {
         long currentTimeMillis = System.currentTimeMillis();
         long currentNanoTime = System.nanoTime();
@@ -341,6 +358,10 @@ public class FastAsyncLogger {
         } catch (IOException e) {
             System.err.println("Error closing log file stream: " + e.getMessage());
             e.printStackTrace();
+        }
+
+        if (droppedEvents.get() > 0) {
+            System.err.println("Dropped " + droppedEvents.get() + " trace events because the writer could not keep up");
         }
     }
 }
