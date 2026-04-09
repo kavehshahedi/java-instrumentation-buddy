@@ -56,7 +56,7 @@ public class MethodExecutionAdvice {
         return true;
     }
 
-    @Advice.OnMethodExit
+    @Advice.OnMethodExit(onThrowable = Throwable.class)
     public static void onExit(@Advice.Origin String methodSignature, @Advice.Enter boolean wasLogged) {
         if (wasLogged && !isOnlyCheckVisited) {
             long timestamp = System.nanoTime() + TIME_OFFSET;
