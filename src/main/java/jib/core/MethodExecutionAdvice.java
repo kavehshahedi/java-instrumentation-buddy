@@ -36,7 +36,7 @@ public class MethodExecutionAdvice {
         isOnlyCheckVisited = config.getInstrumentation().isOnlyCheckVisited();
     }
 
-    @Advice.OnMethodEnter
+    @Advice.OnMethodEnter(suppress = Throwable.class)
     public static boolean onEnter(@Advice.Origin String methodSignature) {
         if (isLimited) {
             LongAdder counter = instrumentationCounts.get(methodSignature);
@@ -56,7 +56,7 @@ public class MethodExecutionAdvice {
         return true;
     }
 
-    @Advice.OnMethodExit(onThrowable = Throwable.class)
+    @Advice.OnMethodExit(onThrowable = Throwable.class, suppress = Throwable.class)
     public static void onExit(@Advice.Origin String methodSignature, @Advice.Enter boolean wasLogged) {
         if (wasLogged && !isOnlyCheckVisited) {
             long timestamp = System.nanoTime() + TIME_OFFSET;
