@@ -18,6 +18,10 @@ public class ConfigurationLoader {
         }
 
         String configPath = parseConfigPath(args);
+        if (configPath == null) {
+            System.err.println("Invalid agent arguments, expected config=<path>, the agent is disabled: " + args);
+            return null;
+        }
         return loadFromFile(configPath);
     }
 
@@ -37,12 +41,13 @@ public class ConfigurationLoader {
     private static Configuration loadFromFile(String filePath) {
         try (InputStreamReader reader = new InputStreamReader(Files.newInputStream(new File(filePath).toPath()))) {
             Yaml yaml = new Yaml(new Constructor(Configuration.class, new LoaderOptions()));
-            return yaml.load(reader);
+            Configuration config = yaml.load(reader);
+            return config != null ? config : new Configuration();
         } catch (IOException e) {
-            System.err.println("Error reading configuration file: " + e.getMessage());
+            System.err.println("Error reading configuration file, the agent is disabled: " + e.getMessage());
         } catch (Exception e) {
-            System.err.println("Error parsing configuration file: " + e.getMessage());
+            System.err.println("Error parsing configuration file, the agent is disabled: " + e.getMessage());
         }
-        return new Configuration();
+        return null;
     }
 }

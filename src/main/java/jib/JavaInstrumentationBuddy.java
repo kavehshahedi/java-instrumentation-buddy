@@ -14,6 +14,9 @@ public class JavaInstrumentationBuddy {
 
     public static void premain(String args, java.lang.instrument.Instrumentation inst) {
         Configuration config = ConfigurationLoader.load(args);
+        if (config == null) {
+            return;
+        }
         FastAsyncLogger.initialize(config.getLogging(), MethodExecutionAdvice.PROCESS_ID);
         Instrumentation.setup(inst, config);
         AgentLifecycleManager.trackLifetime(config);
