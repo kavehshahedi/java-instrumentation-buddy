@@ -6,6 +6,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import jib.services.FastAsyncLogger;
 import jib.models.Configuration;
+import jib.utils.Time;
 
 public class MethodExecutionAdvice {
     public static final Set<String> visitedMethods = ConcurrentHashMap.newKeySet();
@@ -13,13 +14,6 @@ public class MethodExecutionAdvice {
     public static int maxInstrumentations;
     public static boolean isLimited;
     public static boolean isOnlyCheckVisited;
-
-    public static final long TIME_OFFSET;
-    static {
-        long currentTimeMillis = System.currentTimeMillis();
-        long currentNanoTime = System.nanoTime();
-        TIME_OFFSET = (currentTimeMillis * 1_000_000) - currentNanoTime;
-    }
 
     public static void setConfig(Configuration config) {
         maxInstrumentations = config.getInstrumentation().getMaxNumberOfInstrumentations();
@@ -40,8 +34,7 @@ public class MethodExecutionAdvice {
         }
 
         if (!isOnlyCheckVisited || (!visitedMethods.contains(methodSignature) && visitedMethods.add(methodSignature))) {
-            long timestamp = System.nanoTime() + TIME_OFFSET;
-            FastAsyncLogger.log(timestamp, (byte) 0, Thread.currentThread().getId(), methodSignature);
+            FastAsyncLogger.log(Time.getTimeNanoSeconds(), (byte) 0, Thread.currentThread().getId(), methodSignature);
         }
         return true;
     }
@@ -49,8 +42,7 @@ public class MethodExecutionAdvice {
     @Advice.OnMethodExit(onThrowable = Throwable.class, suppress = Throwable.class, inline = false)
     public static void onExit(@Advice.Origin String methodSignature, @Advice.Enter boolean wasLogged) {
         if (wasLogged && !isOnlyCheckVisited) {
-            long timestamp = System.nanoTime() + TIME_OFFSET;
-            FastAsyncLogger.log(timestamp, (byte) 1, Thread.currentThread().getId(), methodSignature);
+            FastAsyncLogger.log(Time.getTimeNanoSeconds(), (byte) 1, Thread.currentThread().getId(), methodSignature);
         }
     }
 }

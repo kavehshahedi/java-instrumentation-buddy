@@ -5,6 +5,7 @@ import java.io.IOException;
 import jib.models.AgentInfo;
 import jib.models.Configuration;
 import jib.services.external.TraceConverter;
+import jib.utils.Time;
 
 public class AgentLifecycleManager {
 
@@ -18,7 +19,7 @@ public class AgentLifecycleManager {
 
     private static void registerShutdownHook(long startTime, Configuration config) {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            long endTime = System.nanoTime() + getTimeOffset();
+            long endTime = Time.getTimeNanoSeconds();
 
             if (FastAsyncLogger.close()) {
                 saveAgentData(startTime, endTime, config);
@@ -27,31 +28,19 @@ public class AgentLifecycleManager {
         }));
     }
 
-    private static long getTimeOffset() {
-        long currentTimeMillis = System.currentTimeMillis();
-        long currentNanoTime = System.nanoTime();
-        return (currentTimeMillis * 1_000_000) - currentNanoTime;
-    }
-
     private static void saveAgentData(long startTime, long endTime, Configuration config) {
-        if (config.getLogging().isUseHash()) {
-            AgentInfo agentInfo = new AgentInfo(
-                    startTime,
-                    endTime,
-                    config.getLogging().isOptimizeTimestamp() ? getOptimizedTimeOffset() : 0,
-                    FastAsyncLogger.getDroppedEvents(),
-                    FastAsyncLogger.getMethodSignatureHashJson());
+        AgentInfo agentInfo = new AgentInfo(
+                startTime,
+                endTime,
+                config.getLogging().isOptimizeTimestamp() ? Time.OPTIMIZED_OFFSET : 0,
+                FastAsyncLogger.getDroppedEvents(),
+                FastAsyncLogger.getMethodSignatureHashJson());
 
-            try {
-                JsonFileHandler.writeJsonObjectToFile(config.getLogging().getMetadataFile(), agentInfo);
-            } catch (IOException e) {
-                System.err.println("Error writing agent info: " + e.getMessage());
-            }
+        try {
+            JsonFileHandler.writeJsonObjectToFile(config.getLogging().getMetadataFile(), agentInfo);
+        } catch (IOException e) {
+            System.err.println("Error writing agent info: " + e.getMessage());
         }
-    }
-
-    private static long getOptimizedTimeOffset() {
-        return Long.parseLong(String.valueOf(System.currentTimeMillis()).substring(0, 4) + "000000000000000");
     }
 
     private static void convertLogFileToJson(Configuration config) {

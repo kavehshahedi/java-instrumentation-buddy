@@ -39,7 +39,7 @@ public class TraceConverter {
         if (matcher.matches()) {
             long timestamp = Long.parseLong(matcher.group(1));
             if (config.getLogging().isOptimizeTimestamp()) {
-                timestamp = timestamp + Time.getOptimizedTimeOffset();
+                timestamp = timestamp + Time.OPTIMIZED_OFFSET;
             }
             String phase = matcher.group(2).equals("S") ? "B" : "E";
             int processId = Integer.parseInt(matcher.group(3));

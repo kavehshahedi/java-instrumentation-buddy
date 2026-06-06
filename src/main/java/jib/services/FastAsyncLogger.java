@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import jib.models.Configuration;
+import jib.utils.Time;
 
 public class FastAsyncLogger {
     private static int BATCH_SIZE = 4096; // 4096 entries
@@ -44,7 +45,6 @@ public class FastAsyncLogger {
     private static final int ALPHABET_SIZE = ALPHABET.length;
 
     private static long startTime;
-    private static long optimizedOffset;
     private static String processId;
     private static byte[] processIdBytes;
 
@@ -77,17 +77,12 @@ public class FastAsyncLogger {
         processIdBytes = processId.getBytes(StandardCharsets.UTF_8);
         logFileName = config.getFile();
 
-        if (optimizeTimestamp) {
-            optimizedOffset = Long.parseLong(
-                    String.valueOf(System.currentTimeMillis()).substring(0, 4) + "000000000000000");
-        }
-
         stripes = new Stripe[Integer.highestOneBit(Runtime.getRuntime().availableProcessors() * 2 - 1)];
         for (int i = 0; i < stripes.length; i++) {
             stripes[i] = new Stripe();
         }
         queue = new ArrayBlockingQueue<>(QUEUE_DEPTH);
-        startTime = System.nanoTime() + getTimeOffset();
+        startTime = Time.getTimeNanoSeconds();
     }
 
     private static synchronized boolean start() {
@@ -218,7 +213,7 @@ public class FastAsyncLogger {
         // timestamp
         long ts = entry.timestamp;
         if (optimizeTimestamp) {
-            ts = ts - optimizedOffset;
+            ts = ts - Time.OPTIMIZED_OFFSET;
         }
         pos = writeLong(ts, buffer, pos);
 
@@ -331,12 +326,6 @@ public class FastAsyncLogger {
 
     public static long getDroppedEvents() {
         return droppedEvents.get();
-    }
-
-    private static long getTimeOffset() {
-        long currentTimeMillis = System.currentTimeMillis();
-        long currentNanoTime = System.nanoTime();
-        return (currentTimeMillis * 1_000_000) - currentNanoTime;
     }
 
     public static synchronized boolean close() {

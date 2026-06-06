@@ -2,12 +2,8 @@ package jib.utils;
 
 public class Time {
 
-    public static final long TIME_OFFSET;
-    static {
-        long currentTimeMillis = System.currentTimeMillis();
-        long currentNanoTime = System.nanoTime();
-        TIME_OFFSET = (currentTimeMillis * 1_000_000) - currentNanoTime;
-    }
+    public static final long TIME_OFFSET = calibrateOffset();
+    public static final long OPTIMIZED_OFFSET = getTimeNanoSeconds() / 1_000_000_000_000_000L * 1_000_000_000_000_000L;
 
     private Time() {
     }
@@ -16,7 +12,12 @@ public class Time {
         return System.nanoTime() + TIME_OFFSET;
     }
 
-    public static long getOptimizedTimeOffset() {
-        return Long.parseLong(String.valueOf(System.currentTimeMillis()).substring(0, 4) + "000000000000000");
+    private static long calibrateOffset() {
+        long millis = System.currentTimeMillis();
+        long next;
+        do {
+            next = System.currentTimeMillis();
+        } while (next == millis);
+        return next * 1_000_000 - System.nanoTime();
     }
 }
