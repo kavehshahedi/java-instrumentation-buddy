@@ -4,13 +4,10 @@ import net.bytebuddy.asm.Advice;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
-import java.lang.management.ManagementFactory;
 import jib.services.FastAsyncLogger;
 import jib.models.Configuration;
 
 public class MethodExecutionAdvice {
-    public static final String PROCESS_ID = initializeProcessId();
-
     public static final Set<String> visitedMethods = ConcurrentHashMap.newKeySet();
     public static final ConcurrentHashMap<String, AtomicLong> instrumentationCounts = new ConcurrentHashMap<>();
     public static int maxInstrumentations;
@@ -22,11 +19,6 @@ public class MethodExecutionAdvice {
         long currentTimeMillis = System.currentTimeMillis();
         long currentNanoTime = System.nanoTime();
         TIME_OFFSET = (currentTimeMillis * 1_000_000) - currentNanoTime;
-    }
-
-    public static String initializeProcessId() {
-        String jvmName = ManagementFactory.getRuntimeMXBean().getName();
-        return jvmName.split("@")[0];
     }
 
     public static void setConfig(Configuration config) {

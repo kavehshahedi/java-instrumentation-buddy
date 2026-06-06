@@ -43,8 +43,7 @@ public class AgentLifecycleManager {
                     FastAsyncLogger.getMethodSignatureHashJson());
 
             try {
-                String jsonFile = config.getLogging().getFile().replace(".log", ".json");
-                JsonFileHandler.writeJsonObjectToFile(jsonFile, agentInfo);
+                JsonFileHandler.writeJsonObjectToFile(config.getLogging().getMetadataFile(), agentInfo);
             } catch (IOException e) {
                 System.err.println("Error writing agent info: " + e.getMessage());
             }
@@ -60,8 +59,6 @@ public class AgentLifecycleManager {
             return;
         }
 
-        String logFile = config.getLogging().getFile();
-        String jsonLogFile = logFile.replace(".log", ".log.json");
-        new TraceConverter(config, logFile, jsonLogFile).convert();
+        new TraceConverter(config, config.getLogging().getFile(), config.getLogging().getJsonFile()).convert();
     }
 }

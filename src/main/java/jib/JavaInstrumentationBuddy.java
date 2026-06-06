@@ -1,11 +1,11 @@
 package jib;
 
 import jib.core.Instrumentation;
-import jib.core.MethodExecutionAdvice;
 import jib.services.AgentLifecycleManager;
 import jib.services.ConfigurationLoader;
 import jib.models.Configuration;
 import jib.services.FastAsyncLogger;
+import jib.utils.ProcessInfo;
 
 public class JavaInstrumentationBuddy {
 
@@ -17,7 +17,7 @@ public class JavaInstrumentationBuddy {
         if (config == null) {
             return;
         }
-        FastAsyncLogger.initialize(config.getLogging(), MethodExecutionAdvice.PROCESS_ID);
+        FastAsyncLogger.initialize(config.getLogging(), ProcessInfo.PID);
         Instrumentation.setup(inst, config);
         AgentLifecycleManager.trackLifetime(config);
     }

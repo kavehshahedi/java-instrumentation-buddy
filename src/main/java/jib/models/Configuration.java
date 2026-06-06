@@ -3,12 +3,13 @@ package jib.models;
 import java.util.Collections;
 import java.util.List;
 
+import jib.utils.ProcessInfo;
 import jib.utils.Time;
 
 public class Configuration {
 
     // Constants
-    public static final String DEFAULT_LOG_FILE = "app.log";
+    public static final String DEFAULT_LOG_FILE = "jib-%p.log";
 
     private Logging logging = new Logging();
     private Instrumentation instrumentation = new Instrumentation();
@@ -60,17 +61,34 @@ public class Configuration {
 
         // Getters and setters
         public String getFile() {
-            String fileName = file != null ? file : DEFAULT_LOG_FILE;
+            String fileName = (file != null ? file : DEFAULT_LOG_FILE).replace("%p", ProcessInfo.PID);
             if (addTimestampToFileNames) {
                 if (timestamp == -1)
                     timestamp = Time.getTimeNanoSeconds();
-                    
-                fileName = fileName.replace(".log", "_" + timestamp + ".log");
+
+                int extension = extensionIndex(fileName);
+                fileName = fileName.substring(0, extension) + "_" + timestamp + fileName.substring(extension);
             }
 
             return fileName;
         }
-    
+
+        public String getMetadataFile() {
+            String fileName = getFile();
+            String metadataFile = fileName.substring(0, extensionIndex(fileName)) + ".json";
+            return metadataFile.equals(fileName) || metadataFile.equals(getJsonFile()) ? fileName + ".meta.json" : metadataFile;
+        }
+
+        public String getJsonFile() {
+            return getFile() + ".json";
+        }
+
+        private static int extensionIndex(String fileName) {
+            int dot = fileName.lastIndexOf('.');
+            int separator = Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\'));
+            return dot > separator + 1 ? dot : fileName.length();
+        }
+
         public void setFile(String file) {
             this.file = file != null ? file : DEFAULT_LOG_FILE;
         }
