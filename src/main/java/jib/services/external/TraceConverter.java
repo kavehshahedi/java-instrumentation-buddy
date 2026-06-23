@@ -7,11 +7,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import jib.models.Configuration;
 import jib.models.TraceEntry;
+import jib.services.FastAsyncLogger;
 import jib.utils.Time;
 
 public class TraceConverter {
@@ -21,11 +23,13 @@ public class TraceConverter {
     private static final Pattern REGEX = Pattern.compile("\\[(\\d+)\\] (S|E) \\[(\\d+)\\]\\[(\\d+)\\] \"([\\w\\W\\s.]+)\"");
     private final String inputPath;
     private final String outputPath;
+    private final Map<String, String> methodSignatures;
 
     public TraceConverter(Configuration config, String inputPath, String outputPath) {
         this.config = config;
         this.inputPath = inputPath;
         this.outputPath = outputPath;
+        this.methodSignatures = FastAsyncLogger.getMethodSignaturesByHash();
     }
 
     private TraceEntry processLine(String line) {
@@ -39,7 +43,7 @@ public class TraceConverter {
             int processId = Integer.parseInt(matcher.group(3));
             int threadId = Integer.parseInt(matcher.group(4));
             String name = matcher.group(5).trim();
-            return new TraceEntry(timestamp, phase, name, processId, threadId);
+            return new TraceEntry(timestamp, phase, methodSignatures.getOrDefault(name, name), processId, threadId);
         }
         return null;
     }

@@ -7,6 +7,7 @@ import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -294,6 +295,14 @@ public class FastAsyncLogger {
     private static byte[] getMethodSigBytes(String methodSignature) {
         return methodSignatureToBytes.computeIfAbsent(methodSignature,
                 key -> key.getBytes(StandardCharsets.UTF_8));
+    }
+
+    public static Map<String, String> getMethodSignaturesByHash() {
+        Map<String, String> methodSignatures = new HashMap<>();
+        for (Map.Entry<String, byte[]> entry : methodSignatureToHashBytes.entrySet()) {
+            methodSignatures.put(new String(entry.getValue(), StandardCharsets.UTF_8), entry.getKey());
+        }
+        return methodSignatures;
     }
 
     public static String getMethodSignatureHashJson() {
