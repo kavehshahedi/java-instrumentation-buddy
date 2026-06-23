@@ -38,6 +38,6 @@ public class TraceEntry implements IJsonSerializable {
     private String toMicroseconds(long timestamp) {
         long microseconds = timestamp / 1000;
         long nanosRemainder = timestamp % 1000;
-        return microseconds + "." + String.format("%03d", nanosRemainder);
+        return microseconds + (nanosRemainder < 10 ? ".00" : nanosRemainder < 100 ? ".0" : ".") + nanosRemainder;
     }
 }
