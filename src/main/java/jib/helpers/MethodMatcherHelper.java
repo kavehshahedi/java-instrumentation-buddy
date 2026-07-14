@@ -7,6 +7,7 @@ import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Stack;
@@ -59,7 +60,10 @@ public class MethodMatcherHelper {
         ElementMatcher.Junction<TypeDescription> targetPackageMatcher = ElementMatchers.any();
         if (!instrumentation.getTargetPackage().isEmpty()
                 && !instrumentation.getTargetPackage().equals("*")) {
-            targetPackageMatcher = ElementMatchers.nameStartsWith(instrumentation.getTargetPackage());
+            targetPackageMatcher = ElementMatchers.none();
+            for (String targetPackage : instrumentation.getTargetPackage().split(",")) {
+                targetPackageMatcher = targetPackageMatcher.or(ElementMatchers.nameStartsWith(targetPackage.trim() + "."));
+            }
         }
 
         // Exclude the agent class from instrumentation
@@ -72,8 +76,13 @@ public class MethodMatcherHelper {
 
     private static ElementMatcher.Junction<MethodDescription> createMatcherFromSignature(
             MethodSignature methodSignature) {
+        List<String> parameterTypes = methodSignature.getParameterTypes();
         ElementMatcher.Junction<MethodDescription> matcher = ElementMatchers.named(methodSignature.getMethodName())
-                .and(ElementMatchers.takesArguments(methodSignature.getNumArguments()));
+                .and(ElementMatchers.returns(ElementMatchers.named(methodSignature.getReturnType())))
+                .and(ElementMatchers.takesArguments(parameterTypes.size()));
+        for (int i = 0; i < parameterTypes.size(); i++) {
+            matcher = matcher.and(ElementMatchers.takesArgument(i, ElementMatchers.named(parameterTypes.get(i))));
+        }
 
         // Add declaring class matcher
         if (!methodSignature.getDeclaringClass().isEmpty()) {
@@ -107,19 +116,21 @@ public class MethodMatcherHelper {
     private static class MethodSignature {
         private final String methodName;
         private final String declaringClass;
-        private final int numArguments;
+        private final String returnType;
+        private final List<String> parameterTypes;
         private final boolean isStatic;
         private final boolean isPublic;
         private final boolean isPrivate;
         private final boolean isProtected;
         private final boolean isPackagePrivate;
 
-        public MethodSignature(String methodName, String declaringClass, int numArguments, boolean isStatic,
-                boolean isPublic,
+        public MethodSignature(String methodName, String declaringClass, String returnType, List<String> parameterTypes,
+                boolean isStatic, boolean isPublic,
                 boolean isPrivate, boolean isProtected, boolean isPackagePrivate) {
             this.methodName = methodName;
             this.declaringClass = declaringClass;
-            this.numArguments = numArguments;
+            this.returnType = returnType;
+            this.parameterTypes = parameterTypes;
             this.isStatic = isStatic;
             this.isPublic = isPublic;
             this.isPrivate = isPrivate;
@@ -135,8 +146,12 @@ public class MethodMatcherHelper {
             return declaringClass;
         }
 
-        public int getNumArguments() {
-            return numArguments;
+        public String getReturnType() {
+            return returnType;
+        }
+
+        public List<String> getParameterTypes() {
+            return parameterTypes;
         }
 
         public boolean isStatic() {
@@ -158,23 +173,14 @@ public class MethodMatcherHelper {
         public boolean isPackagePrivate() {
             return isPackagePrivate;
         }
-
-        @Override
-        public String toString() {
-            return "MethodSignature{" + "methodName='" + methodName + '\'' + ", declaringClass='" + declaringClass
-                    + '\''
-                    + ", numArguments=" + numArguments + ", isStatic=" + isStatic + ", isPublic=" + isPublic
-                    + ", isPrivate="
-                    + isPrivate + ", isProtected=" + isProtected + ", isPackagePrivate=" + isPackagePrivate + '}';
-        }
     }
 
     static MethodSignature parseMethodSignature(String methodSignature) {
         try {
             // Extract method part and argument part
-            String methodPart = methodSignature.substring(0, methodSignature.indexOf('(')).trim();
-            String argumentsPart = methodSignature
-                    .substring(methodSignature.indexOf('(') + 1, methodSignature.indexOf(')')).trim();
+            String methodPart = removeGenerics(methodSignature.substring(0, methodSignature.indexOf('('))).trim();
+            String argumentsPart = removeGenerics(methodSignature
+                    .substring(methodSignature.indexOf('(') + 1, methodSignature.indexOf(')'))).trim();
 
             // Split method part into parts (modifiers, return type, class and method name)
             String[] methodParts = methodPart.split("\\s+");
@@ -195,15 +201,10 @@ public class MethodMatcherHelper {
             String declaringClass = String.join(".",
                     Arrays.copyOfRange(methodNameParts, 0, methodNameParts.length - 1));
 
-            // Remove generics from declaring class
-            declaringClass = removeGenerics(declaringClass);
+            String returnType = methodParts[methodParts.length - 2];
 
-            // Determine number of arguments
-            int numArguments = getNumberOfArguments(argumentsPart);
-
-            return new MethodSignature(methodName, declaringClass, numArguments, isStatic, isPublic, isPrivate,
-                    isProtected,
-                    isPackagePrivate);
+            return new MethodSignature(methodName, declaringClass, returnType, getParameterTypes(argumentsPart),
+                    isStatic, isPublic, isPrivate, isProtected, isPackagePrivate);
         } catch (Exception e) {
             System.err.println("Error parsing method signature: " + methodSignature);
             return null;
@@ -232,24 +233,18 @@ public class MethodMatcherHelper {
         return result.toString();
     }
 
-    static int getNumberOfArguments(String argumentsText) {
+    static List<String> getParameterTypes(String argumentsText) {
+        List<String> parameterTypes = new ArrayList<>();
         if (argumentsText.isEmpty()) {
-            return 0;
+            return parameterTypes;
         }
 
-        int numArguments = 0;
-        Stack<Character> stack = new Stack<>();
-
-        for (char c : argumentsText.toCharArray()) {
-            if (c == '<' || c == '[') {
-                stack.push(c);
-            } else if (c == '>' || c == ']') {
-                stack.pop();
-            } else if (c == ',' && stack.isEmpty()) {
-                numArguments++;
-            }
+        for (String argument : argumentsText.split(",")) {
+            String[] tokens = argument.trim().split("\\s+");
+            String type = tokens[0].equals("final") ? tokens[1] : tokens[0];
+            parameterTypes.add(type.replace("...", "[]"));
         }
 
-        return numArguments + 1;
+        return parameterTypes;
     }
 }
