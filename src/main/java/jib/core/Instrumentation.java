@@ -19,6 +19,8 @@ public class Instrumentation {
         ElementMatcher.Junction<MethodDescription> methodMatcher = MethodMatcherHelper.createMethodMatcher(config.getInstrumentation());
 
         new AgentBuilder.Default()
+                .disableClassFormatChanges()
+                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .type(targetPackageMatcher)
                 .transform(new AgentBuilder.Transformer.ForAdvice()
                         .advice(methodMatcher, MethodExecutionAdvice.class.getName()))
