@@ -69,7 +69,7 @@ public class MethodMatcherHelper {
         // Exclude the agent class from instrumentation
         targetPackageMatcher = targetPackageMatcher
                 .and(ElementMatchers
-                        .not(ElementMatchers.nameStartsWith(JavaInstrumentationBuddy.class.getPackage().getName())));
+                        .not(ElementMatchers.nameStartsWith(JavaInstrumentationBuddy.class.getPackage().getName() + ".")));
 
         return targetPackageMatcher;
     }
