@@ -9,17 +9,22 @@ JIB is a lightweight Java agent designed to seamlessly instrument functions in c
 - Flexible logging options
 - Method-level granularity for instrumentation
 - Seamless integration with existing Java applications
+- Attaching to an already running JVM without restarting it
 - Compatible with Java 8 and above
 
 ## Building
 
-To build and install JIB, ensure you have Maven installed on your system. Then, execute the following command in the project root directory:
+To build and install JIB, ensure you have Maven and JDK 9 or newer installed on your system (the agent itself runs on Java 8 and above). Then, execute the following command in the project root directory:
 
 ```console
 mvn clean install
 ```
 
-This command compiles the source code, runs tests, and installs the artifact in your local Maven repository.
+This command compiles the source code, runs the integration tests, and installs the artifact in your local Maven repository. The integration tests run the agent on the JDK used by Maven. To run them on another JDK, pass its `java` executable:
+
+```console
+mvn clean verify -Djib.it.java=/path/to/jdk/bin/java
+```
 
 ### Creating a Deployable JAR
 
@@ -41,6 +46,18 @@ java [OPTIONS] -jar <program commands>
 java [OPTIONS] -javaagent:path/to/the/jib.jar=<config=configuration.yaml> -jar <program commands>
 ```
 
+Without a configuration file, the agent uses the default values described below. An empty configuration file also uses the default values. If the configuration file cannot be read or contains an unknown option, the agent prints an error and stays disabled, and the application runs normally.
+
+### Attaching to a Running JVM
+
+You can also load the agent into a JVM that is already running, using its process id:
+
+```console
+java -jar path/to/the/jib.jar <pid> [configuration.yaml]
+```
+
+Classes that are already loaded are instrumented as well. Relative paths inside the configuration file (such as the log file) are resolved against the working directory of the target JVM. The launcher must run on a JDK, and the agent can only be loaded once per JVM. Starting with JDK 21, the target JVM prints a warning when an agent is loaded this way, and future JDK releases are expected to require starting the JVM with `-XX:+EnableDynamicAgentLoading` for it to work.
+
 ### Agent Configuration
 
 The agent configuration is specified in a YAML file. This file allows you to customize various aspects of the agent's behavior. Below are the available configuration options:
@@ -49,44 +66,46 @@ The agent configuration is specified in a YAML file. This file allows you to cus
 
 The `logging` section controls how the agent generates log files:
 
-- `file`: Specifies the path to the log file where the agent will write its output.
-  - Default: `app.log`
+- `file`: Specifies the path to the log file where the agent will write its output. `%p` in the path is replaced by the process id, so that several JVMs can run with the same configuration. The file is created when the first event is logged, and an existing file with the same name is overwritten.
+  - Default: `jib-%p.log`
 
-- `addTimestampToFileNames`: When set to `true`, adds a timestamp to the log file name.
+- `addTimestampToFileNames`: When set to `true`, adds a timestamp to the log file name, right before its extension (e.g., `trace_1792265583180000709.log`).
   - Default: `false`
 
-- `useHash`: If `true`, the agent uses hashing for method signatures in the log file. This is useful for reducing the size of the log file when there are a large number of method logs with long signatures. The mapping of the hashes will be stored in a separate JSON file.
+- `useHash`: If `true`, the agent uses hashing for method signatures in the log file. This is useful for reducing the size of the log file when there are a large number of method logs with long signatures. The mapping of the hashes is stored in the metadata file, and the JSON conversion writes the full signatures.
   - Default: `false`
 
-- `optimizeTimestamp`: When set to `true`, optimizes timestamp handling for improved performance. Basically, it removes the first 4 digits of the timestamp to reduce the log file size.
+- `optimizeTimestamp`: When set to `true`, optimizes timestamp handling for improved performance. Basically, it removes the first 4 digits of the timestamp to reduce the log file size. The removed part is stored as `log_time_difference` in the metadata file.
   - Default: `false`
 
-- `batchSize`: Specifies the number of log entries to batch together before writing to the queue. Larger values can improve throughput but may increase memory usage and latency.
+- `batchSize`: Specifies the number of log entries to batch together before writing to the queue. Each thread logs into one of a fixed set of buffers (about one per CPU), so the memory used grows with this value. Larger values can improve throughput but may increase memory usage and latency.
   - Default: `4096`
 
-- `queueDepth`: Sets the maximum number of batches that can be queued for writing. This acts as a buffer between log generation and disk I/O. Increase this value if you experience dropped logs under high load.
-  - Default: `2000`
+- `queueDepth`: Sets the maximum number of batches that can be queued for writing. This acts as a buffer between log generation and disk I/O. When the queue is full, new batches are dropped instead of slowing down the application, and the number of dropped events is printed at exit and stored as `dropped_events` in the metadata file. Increase this value if you experience dropped logs under high load.
+  - Default: `64`
 
-- `flushIntervalMs`: Controls how often (in milliseconds) the logger flushes partially filled batches to the queue. Lower values reduce latency but may increase I/O overhead.
+- `flushIntervalMs`: Controls how long (in milliseconds) the logger waits for a full batch before writing partially filled batches. Lower values reduce latency but may increase I/O overhead.
   - Default: `100`
 
 - `bufferSize`: Sets the size of the direct byte buffer used for writing log entries to disk (in bytes). Larger buffers can improve write performance but consume more memory.
   - Default: `2097152` (2MB)
 
+When the application exits, the agent also writes a metadata file next to the log file, named after it with a `.json` extension (e.g., `trace.json` for `trace.log`). It contains the start and end times of the agent, the `log_time_difference` of `optimizeTimestamp`, the number of dropped events, and the mapping of the method hashes.
+
 #### Instrumentation
 
 The `instrumentation` section defines which parts of your code the agent will instrument:
 
-- `targetPackage`: Specifies which package to instrument.
+- `targetPackage`: Specifies which package to instrument, including its subpackages. Use a comma-separated list to instrument several packages (e.g., `com.example.app, com.example.lib`).
   - Default: `*` (all packages)
 
-- `onlyCheckVisited`: When set to `true`, the agent only instruments the entry of each function once. This is useful for checking code coverage.
+- `onlyCheckVisited`: When set to `true`, the agent only logs the entry of each function the first time it runs. This is useful for checking code coverage.
   - Default: `false`
 
 - `instrumentMainMethod`: If `true`, the agent will instrument the main method of the main class.
   - Default: `false`
 
-- `maxNumberOfInstrumentations`: Sets a limit on the number of instrumentations to perform. Use -1 for unlimited.
+- `maxNumberOfInstrumentations`: Sets a limit on the number of calls logged for each method. Use -1 for unlimited.
   - Default: `-1`
 
 - `targetMethods`: Allows you to specify which methods to instrument or ignore. This section has two sub-sections:
@@ -107,7 +126,7 @@ The `instrumentation` section defines which parts of your code the agent will in
 
 The `misc` section contains additional configuration options:
 
-- `convertToJson`: When set to `true`, converts the output logs to JSON format. This format is supported by visualization tools like Eclipse Trace Compass.
+- `convertToJson`: When set to `true`, converts the output logs to JSON format when the application exits, next to the log file (e.g., `trace.log.json` for `trace.log`). This format is supported by visualization tools like Eclipse Trace Compass.
   - Default: `false`
 
 ##### Method Structure
@@ -131,7 +150,9 @@ Where:
     - it should be the fully qualified class name (e.g., `java.lang.String` or `void`) (required)
 - `[declaring-class]` is the fully qualified class name where the method is declared (optional)
 - `method-name` is the name of the method (required)
-- `(args)` are the method's parameters (required)
+- `(args)` are the method's parameters, with fully qualified types (required)
+
+The return type and the parameter types are matched exactly, so overloaded methods can be told apart. Generic type arguments are ignored, and types are written as they appear in the trace (e.g., `com.example.Outer$Inner` for a nested class).
 
 Examples:
 ```java
@@ -146,7 +167,7 @@ Here's an example of a complete configuration file:
 
 ```yaml
 logging:
-  file: app.log
+  file: trace.log
   addTimestampToFileNames: true
   useHash: true
   optimizeTimestamp: true
@@ -220,29 +241,29 @@ Suppose we want to instrument the program to log the entry and exit of each meth
     
 ```yaml
 logging:
-    file: app.log
+    file: trace.log
 
 instrumentation:
     targetPackage: com.example.pkg
 ```
 
-After the instrumentation, the agent will store all the logs in a single file (i.e., `app.log`). Each line shows a function entry or exit along with the S/E (start or end) time and the function's signature.
+After the instrumentation, the agent will store all the logs in a single file (i.e., `trace.log`). Each line shows a function entry or exit along with the S/E (start or end) time, the process and thread ids, and the function's signature. Exits caused by exceptions are logged as well.
 ```
-[TIME_NANO_SECONDS] S|E FUNCTION_SIGNATURE
+[TIME_NANO_SECONDS] S|E [PROCESS_ID][THREAD_ID] "FUNCTION_SIGNATURE"
 ```
 ```
-[1724605175635717866] S public static void com.example.pkg.Main.main(java.lang.String[])
-[1724605175637779321] S private static void com.example.pkg.Main.firstMethod()
-[1724605175637903541] E private static void com.example.pkg.Main.firstMethod()
-[1724605175637944911] S java.lang.String com.example.pkg.Main.secondMethod()
-[1724605175637971154] E java.lang.String com.example.pkg.Main.secondMethod()
-[1724605175637995449] S public int com.example.pkg.Main.thirdMethod(int,int)
-[1724605175638028792] E public int com.example.pkg.Main.thirdMethod(int,int)
-[1724605175638069161] S protected com.example.pkg.Another com.example.pkg.Main.fourthMethod()
-[1724605175640295270] E protected com.example.pkg.Another com.example.pkg.Main.fourthMethod()
-[1724605175640359832] S private static void com.example.pkg.Main.fifthMethod(java.util.HashMap,java.lang.String)
-[1724605175640388900] E private static void com.example.pkg.Main.fifthMethod(java.util.HashMap,java.lang.String)
-[1724605175640410797] E public static void com.example.pkg.Main.main(java.lang.String[])
+[1724605175635717866] S [12345][1] "public static void com.example.pkg.Main.main(java.lang.String[])"
+[1724605175637779321] S [12345][1] "private static void com.example.pkg.Main.firstMethod()"
+[1724605175637903541] E [12345][1] "private static void com.example.pkg.Main.firstMethod()"
+[1724605175637944911] S [12345][1] "java.lang.String com.example.pkg.Main.secondMethod()"
+[1724605175637971154] E [12345][1] "java.lang.String com.example.pkg.Main.secondMethod()"
+[1724605175637995449] S [12345][1] "public int com.example.pkg.Main.thirdMethod(int,int)"
+[1724605175638028792] E [12345][1] "public int com.example.pkg.Main.thirdMethod(int,int)"
+[1724605175638069161] S [12345][1] "protected com.example.pkg.Another com.example.pkg.Main.fourthMethod()"
+[1724605175640295270] E [12345][1] "protected com.example.pkg.Another com.example.pkg.Main.fourthMethod()"
+[1724605175640359832] S [12345][1] "private static void com.example.pkg.Main.fifthMethod(java.util.HashMap,java.lang.String)"
+[1724605175640388900] E [12345][1] "private static void com.example.pkg.Main.fifthMethod(java.util.HashMap,java.lang.String)"
+[1724605175640410797] E [12345][1] "public static void com.example.pkg.Main.main(java.lang.String[])"
 ```
 
 ### Partial Instrumentation
@@ -253,7 +274,7 @@ Now, we may specify the methods to instrument or ignore in the configuration fil
     
 ```yaml
 logging:
-    file: app.log
+    file: trace.log
 
 instrumentation:
     targetPackage: com.example.pkg
@@ -265,10 +286,10 @@ instrumentation:
 
 After running the program with this configuration, the log file will only contain entries for the `main` and `thirdMethod` functions.
 ```
-[1724605175635717866] S public static void com.example.pkg.Main.main(java.lang.String[])
-[1724605175637995449] S public int com.example.pkg.Main.thirdMethod(int,int)
-[1724605175638028792] E public int com.example.pkg.Main.thirdMethod(int,int)
-[1724605175640410797] E public static void com.example.pkg.Main.main(java.lang.String[])
+[1724605175635717866] S [12345][1] "public static void com.example.pkg.Main.main(java.lang.String[])"
+[1724605175637995449] S [12345][1] "public int com.example.pkg.Main.thirdMethod(int,int)"
+[1724605175638028792] E [12345][1] "public int com.example.pkg.Main.thirdMethod(int,int)"
+[1724605175640410797] E [12345][1] "public static void com.example.pkg.Main.main(java.lang.String[])"
 ```
 
 ### Use Hashing for Method Signatures
@@ -278,36 +299,38 @@ If you want to use hashing for method signatures in the log file, you can enable
     
 ```yaml
 logging:
-    file: app.log
+    file: trace.log
     useHash: true
 
 instrumentation:
     targetPackage: com.example.pkg
 ```
 
-After running the program with this configuration, the log file will contain hashed method signatures instead of the full method signatures. The mapping of the hashes will be stored in a separate JSON file.
+After running the program with this configuration, the log file will contain hashed method signatures instead of the full method signatures. The mapping of the hashes will be stored in the metadata file.
 
 - Log file:
     ```
-    [1724685951931233870] S A
-    [1724685951933340359] S B
-    [1724685951933525189] E B
-    [1724685951933581572] S C
-    [1724685951933615793] E C
-    [1724685951933641228] S D
-    [1724685951933668752] E D
-    [1724685951933730567] S E
-    [1724685951936219996] E E
-    [1724685951936283964] S F
-    [1724685951936315634] E F
-    [1724685951936338337] E A
+    [1724685951931233870] S [12345][1] "A"
+    [1724685951933340359] S [12345][1] "B"
+    [1724685951933525189] E [12345][1] "B"
+    [1724685951933581572] S [12345][1] "C"
+    [1724685951933615793] E [12345][1] "C"
+    [1724685951933641228] S [12345][1] "D"
+    [1724685951933668752] E [12345][1] "D"
+    [1724685951933730567] S [12345][1] "E"
+    [1724685951936219996] E [12345][1] "E"
+    [1724685951936283964] S [12345][1] "F"
+    [1724685951936315634] E [12345][1] "F"
+    [1724685951936338337] E [12345][1] "A"
     ```
 
-- Log metadata (`.json`)
+- Log metadata (`trace.json`)
     ```json
     {
         "start_time": 1724685951888001220,
         "end_time": 1724685951936780901,
+        "log_time_difference": 0,
+        "dropped_events": 0,
         "method_signature_hash": {
             "public int com.example.pkg.Main.thirdMethod(int,int)": "D",
             "java.lang.String com.example.pkg.Main.secondMethod()": "C",
@@ -333,62 +356,86 @@ If you want to import the collected instrumentation logs in Trace Compass, you c
     {
         "ts": 1724686484544229.333,
         "ph": "B",
-        "name": "public static void com.example.pkg.Main.main(java.lang.String[])"
+        "name": "public static void com.example.pkg.Main.main(java.lang.String[])",
+        "pid": 12345,
+        "tid": 1
     },
     {
         "ts": 1724686484546125.563,
         "ph": "B",
-        "name": "private static void com.example.pkg.Main.firstMethod()"
+        "name": "private static void com.example.pkg.Main.firstMethod()",
+        "pid": 12345,
+        "tid": 1
     },
     {
         "ts": 1724686484546247.763,
         "ph": "E",
-        "name": "private static void com.example.pkg.Main.firstMethod()"
+        "name": "private static void com.example.pkg.Main.firstMethod()",
+        "pid": 12345,
+        "tid": 1
     },
     {
         "ts": 1724686484546282.093,
         "ph": "B",
-        "name": "java.lang.String com.example.pkg.Main.secondMethod()"
+        "name": "java.lang.String com.example.pkg.Main.secondMethod()",
+        "pid": 12345,
+        "tid": 1
     },
     {
         "ts": 1724686484546306.258,
         "ph": "E",
-        "name": "java.lang.String com.example.pkg.Main.secondMethod()"
+        "name": "java.lang.String com.example.pkg.Main.secondMethod()",
+        "pid": 12345,
+        "tid": 1
     },
     {
         "ts": 1724686484546331.966,
         "ph": "B",
-        "name": "public int com.example.pkg.Main.thirdMethod(int,int)"
+        "name": "public int com.example.pkg.Main.thirdMethod(int,int)",
+        "pid": 12345,
+        "tid": 1
     },
     {
         "ts": 1724686484546356.608,
         "ph": "E",
-        "name": "public int com.example.pkg.Main.thirdMethod(int,int)"
+        "name": "public int com.example.pkg.Main.thirdMethod(int,int)",
+        "pid": 12345,
+        "tid": 1
     },
     {
         "ts": 1724686484546380.330,
         "ph": "B",
-        "name": "protected com.example.pkg.Another com.example.pkg.Main.fourthMethod()"
+        "name": "protected com.example.pkg.Another com.example.pkg.Main.fourthMethod()",
+        "pid": 12345,
+        "tid": 1
     },
     {
         "ts": 1724686484548543.913,
         "ph": "E",
-        "name": "protected com.example.pkg.Another com.example.pkg.Main.fourthMethod()"
+        "name": "protected com.example.pkg.Another com.example.pkg.Main.fourthMethod()",
+        "pid": 12345,
+        "tid": 1
     },
     {
         "ts": 1724686484548604.858,
         "ph": "B",
-        "name": "private static void com.example.pkg.Main.fifthMethod(java.util.HashMap,java.lang.String)"
+        "name": "private static void com.example.pkg.Main.fifthMethod(java.util.HashMap,java.lang.String)",
+        "pid": 12345,
+        "tid": 1
     },
     {
         "ts": 1724686484548632.518,
         "ph": "E",
-        "name": "private static void com.example.pkg.Main.fifthMethod(java.util.HashMap,java.lang.String)"
+        "name": "private static void com.example.pkg.Main.fifthMethod(java.util.HashMap,java.lang.String)",
+        "pid": 12345,
+        "tid": 1
     },
     {
         "ts": 1724686484548654.718,
         "ph": "E",
-        "name": "public static void com.example.pkg.Main.main(java.lang.String[])"
+        "name": "public static void com.example.pkg.Main.main(java.lang.String[])",
+        "pid": 12345,
+        "tid": 1
     }
 ]
 ```
