@@ -2,9 +2,11 @@ package jib.core;
 
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
+import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.Nexus;
+import net.bytebuddy.implementation.bytecode.constant.IntegerConstant;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.utility.JavaModule;
 
@@ -19,7 +21,14 @@ public class Instrumentation {
     }
 
     public static void setup(java.lang.instrument.Instrumentation inst, Configuration config) {
-        MethodExecutionAdvice.setConfig(config);
+        int maxInstrumentations = config.getInstrumentation().getMaxNumberOfInstrumentations();
+        boolean isOnlyCheckVisited = config.getInstrumentation().isOnlyCheckVisited();
+        LimitedMethodExecutionAdvice.maxInstrumentations = maxInstrumentations == -1 ? Long.MAX_VALUE : maxInstrumentations;
+        LimitedMethodExecutionAdvice.isOnlyCheckVisited = isOnlyCheckVisited;
+        Class<?> advice = maxInstrumentations == -1 && !isOnlyCheckVisited ? MethodExecutionAdvice.class : LimitedMethodExecutionAdvice.class;
+        Advice.WithCustomMapping methodIds = Advice.withCustomMapping().bind(MethodId.class,
+                (Advice.OffsetMapping) (instrumentedType, instrumentedMethod, assigner, argumentHandler, sort) -> new Advice.OffsetMapping.Target.ForStackManipulation(
+                        IntegerConstant.forValue(MethodRegistry.register(instrumentedMethod.toString()))));
 
         ElementMatcher.Junction<TypeDescription> targetPackageMatcher = MethodMatcherHelper.createTargetPackageMatcher(config.getInstrumentation());
         ElementMatcher.Junction<MethodDescription> methodMatcher = MethodMatcherHelper.createMethodMatcher(config.getInstrumentation());
@@ -36,9 +45,9 @@ public class Instrumentation {
                     }
                 })
                 .type(targetPackageMatcher)
-                .transform(new AgentBuilder.Transformer.ForAdvice()
+                .transform(new AgentBuilder.Transformer.ForAdvice(methodIds)
                         .include(ClassLoader.getSystemClassLoader())
-                        .advice(methodMatcher, MethodExecutionAdvice.class.getName()))
+                        .advice(methodMatcher, advice.getName()))
                 .installOn(inst);
     }
 

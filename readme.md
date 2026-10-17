@@ -103,16 +103,16 @@ The `logging` options control how the agent generates log files:
 - `logging.optimizeTimestamp`: When set to `true`, optimizes timestamp handling for improved performance. Basically, it removes the first 4 digits of the timestamp to reduce the log file size. The removed part is stored as `log_time_difference` in the metadata file.
   - Default: `false`
 
-- `logging.batchSize`: Specifies the number of log entries to batch together before writing to the queue. Each thread logs into one of a fixed set of buffers (about one per CPU), so the memory used grows with this value. Larger values can improve throughput but may increase memory usage and latency.
+- `logging.batchSize`: Specifies the number of log entries in each buffer of a thread (16 bytes per entry). Each thread fills its own buffers without locking, starting with a small one, and a full buffer is handed to the writer. Larger values can improve throughput but increase the memory used by each thread.
   - Default: `4096`
 
-- `logging.queueDepth`: Sets the maximum number of batches that can be queued for writing. This acts as a buffer between log generation and disk I/O. When the queue is full, new batches are dropped instead of slowing down the application, and the number of dropped events is printed at exit and stored as `dropped_events` in the metadata file. Increase this value if you experience dropped logs under high load.
+- `logging.queueDepth`: Sets the maximum number of full buffers waiting to be written. This acts as a buffer between log generation and disk I/O. When it is reached, new events are dropped instead of slowing down the application, and the number of dropped events is printed at exit and stored as `dropped_events` in the metadata file. Increase this value if you experience dropped logs under high load.
   - Default: `64`
 
-- `logging.flushIntervalMs`: Controls how long (in milliseconds) the logger waits for a full batch before writing partially filled batches. Lower values reduce latency but may increase I/O overhead.
+- `logging.flushIntervalMs`: Controls how long (in milliseconds) the logger waits for a full buffer before writing partially filled buffers. Lower values reduce latency but may increase I/O overhead.
   - Default: `100`
 
-- `logging.bufferSize`: Sets the size of the direct byte buffer used for writing log entries to disk (in bytes). Larger buffers can improve write performance but consume more memory.
+- `logging.bufferSize`: Sets the size of the buffer used for writing log entries to disk (in bytes). Larger buffers can improve write performance but consume more memory.
   - Default: `2097152` (2MB)
 
 When the application exits, the agent also writes a metadata file next to the log file, named after it with a `.json` extension (e.g., `trace.json` for `trace.log`). It contains the start and end times of the agent, the `log_time_difference` of `logging.optimizeTimestamp`, the number of dropped events, and the mapping of the method hashes.

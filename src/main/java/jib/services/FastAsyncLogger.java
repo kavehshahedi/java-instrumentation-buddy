@@ -5,275 +5,370 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
+import java.util.Iterator;
 import java.util.Map;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicLongArray;
+import java.util.concurrent.locks.LockSupport;
+import jib.core.MethodRegistry;
 import jib.models.Configuration;
 import jib.utils.Time;
 
 public class FastAsyncLogger {
-    private static int BATCH_SIZE = 4096; // 4096 entries
-    private static int QUEUE_DEPTH = 64; // 64 batches
-    private static int FLUSH_INTERVAL_MS = 100; // 100ms
-    private static int BUFFER_SIZE = 2 * 1024 * 1024; // 2MB
+    private static final int FIRST_CHUNK_SIZE = 16;
     private static final int MAX_ENTRY_OVERHEAD = 64;
+    private static final int CACHE_LINE_PADDING = 16;
+    private static final int DROP_RETRY_INTERVAL = 1023;
+    private static final int CLEANUP_INTERVAL = 1023;
+    private static final int STARTED = 1;
+    private static final int STOPPED = 2;
+    private static final byte[] DIGITS = new byte[200];
 
-    private static BlockingQueue<List<LogEntry>> queue;
-    private static Stripe[] stripes;
+    private static int batchSize = 4096;
+    private static int queueDepth = 64;
+    private static long flushIntervalNanos = 100_000_000L;
+    private static int bufferSize = 2 * 1024 * 1024;
+
+    private static final ThreadLocal<ThreadTrace> traces = new ThreadLocal<>();
+    private static final Queue<ThreadTrace> threads = new ConcurrentLinkedQueue<>();
+    private static final Queue<Chunk> pool = new ConcurrentLinkedQueue<>();
+    private static final AtomicInteger pendingChunks = new AtomicInteger();
+    private static final AtomicInteger registeredThreads = new AtomicInteger();
+    private static final AtomicLong droppedEvents = new AtomicLong();
+    private static volatile int state;
     private static Thread writerThread;
     private static FileChannel fileChannel;
     private static FileOutputStream fileOutputStream;
-    private static byte[] scratch = new byte[512];
     private static String logFileName;
-    private static volatile boolean started;
-    private static volatile boolean stopped;
-    private static final AtomicLong droppedEvents = new AtomicLong();
+    private static byte[] output;
+    private static int outputPosition;
+    private static long cachedSeconds = -1;
+    private static final byte[] cachedSecondsDigits = new byte[20];
+    private static int cachedSecondsLength;
 
     private static boolean useHash = false;
     private static boolean optimizeTimestamp = false;
     private static final Map<String, byte[]> methodSignatureToHashBytes = new ConcurrentHashMap<>();
-    private static final Map<String, byte[]> methodSignatureToBytes = new ConcurrentHashMap<>();
-    private static final AtomicInteger counter = new AtomicInteger(0);
+    private static byte[][] signatureBytes = new byte[1024][];
+    private static int hashCounter;
     private static final char[] ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
     private static final int ALPHABET_SIZE = ALPHABET.length;
 
     private static long startTime;
     private static String processId;
-    private static byte[] processIdBytes;
 
-    static class LogEntry {
-        final long timestamp;
-        final byte type;
-        final long threadId;
-        final String methodSig;
-
-        LogEntry(long ts, byte type, long tid, String sig) {
-            this.timestamp = ts;
-            this.type = type;
-            this.threadId = tid;
-            this.methodSig = sig;
+    static {
+        for (int i = 0; i < 100; i++) {
+            DIGITS[i * 2] = (byte) ('0' + i / 10);
+            DIGITS[i * 2 + 1] = (byte) ('0' + i % 10);
         }
     }
 
-    private static final class Stripe {
-        List<LogEntry> entries = new ArrayList<>(BATCH_SIZE);
+    private static final class Chunk {
+        final long[] events;
+        final AtomicLongArray count;
+        final int countIndex;
+        volatile Chunk next;
+        int written;
+
+        Chunk(int capacity) {
+            events = new long[capacity * 2];
+            countIndex = capacity == batchSize ? CACHE_LINE_PADDING : 0;
+            count = new AtomicLongArray(countIndex * 2 + 1);
+        }
+
+        int capacity() {
+            return events.length >> 1;
+        }
+
+        int size() {
+            return (int) count.get(countIndex);
+        }
+    }
+
+    private static final class ThreadTrace {
+        final Thread owner;
+        final long threadId;
+        final AtomicLong dropped = new AtomicLong();
+        Chunk current;
+        Chunk head;
+        byte[] prefix;
+
+        ThreadTrace(Thread owner, Chunk chunk) {
+            this.owner = owner;
+            this.threadId = owner.getId();
+            this.current = chunk;
+            this.head = chunk;
+        }
     }
 
     public static void initialize(Configuration.Logging config, String pid) {
         useHash = config.isUseHash();
         optimizeTimestamp = config.isOptimizeTimestamp();
-        BATCH_SIZE = config.getBatchSize();
-        QUEUE_DEPTH = config.getQueueDepth();
-        FLUSH_INTERVAL_MS = config.getFlushIntervalMs();
-        BUFFER_SIZE = config.getBufferSize();
+        batchSize = config.getBatchSize();
+        queueDepth = config.getQueueDepth();
+        flushIntervalNanos = config.getFlushIntervalMs() * 1_000_000L;
+        bufferSize = config.getBufferSize();
         processId = pid;
-        processIdBytes = processId.getBytes(StandardCharsets.UTF_8);
         logFileName = config.getFile();
-
-        stripes = new Stripe[Integer.highestOneBit(Runtime.getRuntime().availableProcessors() * 2 - 1)];
-        for (int i = 0; i < stripes.length; i++) {
-            stripes[i] = new Stripe();
-        }
-        queue = new ArrayBlockingQueue<>(QUEUE_DEPTH);
         startTime = Time.getTimeNanoSeconds();
     }
 
     private static synchronized boolean start() {
-        if (!started && !stopped) {
+        if (state == 0) {
             try {
                 fileOutputStream = new FileOutputStream(logFileName);
                 fileChannel = fileOutputStream.getChannel();
                 writerThread = new Thread(FastAsyncLogger::writerLoop, "FastAsyncLogger-Writer");
                 writerThread.setDaemon(true);
+                state = STARTED;
                 writerThread.start();
-                started = true;
             } catch (IOException e) {
                 System.err.println("Failed to open log file: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
                 e.printStackTrace();
-                stopped = true;
+                state = STOPPED;
             }
         }
-        return started;
+        return state == STARTED;
     }
 
-    public static void log(long timestamp, byte type, long threadId, String methodSig) {
-        if (!started && (stopped || !start())) {
+    public static void log(int methodId, int type) {
+        int currentState = state;
+        if (currentState != STARTED && (currentState == STOPPED || !start())) {
             return;
         }
-        LogEntry entry = new LogEntry(timestamp, type, threadId, methodSig);
-        Stripe stripe = stripes[(int) threadId & (stripes.length - 1)];
-        synchronized (stripe) {
-            stripe.entries.add(entry);
-            if (stripe.entries.size() >= BATCH_SIZE) {
-                if (queue.offer(stripe.entries)) {
-                    stripe.entries = new ArrayList<>(BATCH_SIZE);
-                } else {
-                    droppedEvents.addAndGet(stripe.entries.size());
-                    stripe.entries.clear();
-                }
-            }
+
+        ThreadTrace trace = traces.get();
+        if (trace == null) {
+            trace = register();
         }
+        Chunk chunk = trace.current;
+        int size = chunk.size();
+        if (size == chunk.capacity()) {
+            long dropped = trace.dropped.get();
+            chunk = (dropped & DROP_RETRY_INTERVAL) == 0 ? nextChunk(trace) : null;
+            if (chunk == null) {
+                trace.dropped.lazySet(dropped + 1);
+                return;
+            }
+            size = 0;
+        }
+        chunk.events[size * 2] = Time.getTimeNanoSeconds();
+        chunk.events[size * 2 + 1] = (long) methodId << 1 | type;
+        chunk.count.lazySet(chunk.countIndex, size + 1);
+    }
+
+    private static ThreadTrace register() {
+        ThreadTrace trace = new ThreadTrace(Thread.currentThread(), new Chunk(Math.min(FIRST_CHUNK_SIZE, batchSize)));
+        traces.set(trace);
+        threads.add(trace);
+        if ((registeredThreads.incrementAndGet() & CLEANUP_INTERVAL) == 0) {
+            LockSupport.unpark(writerThread);
+        }
+        return trace;
+    }
+
+    private static Chunk nextChunk(ThreadTrace trace) {
+        if (pendingChunks.get() >= queueDepth) {
+            return null;
+        }
+        Chunk chunk = pool.poll();
+        if (chunk == null) {
+            chunk = new Chunk(batchSize);
+        }
+        pendingChunks.incrementAndGet();
+        trace.current.next = chunk;
+        trace.current = chunk;
+        LockSupport.unpark(writerThread);
+        return chunk;
     }
 
     private static void writerLoop() {
-        ByteBuffer byteBuffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
-
+        output = new byte[bufferSize];
         try {
-            while (!stopped) {
-                List<LogEntry> batch = queue.poll(FLUSH_INTERVAL_MS, TimeUnit.MILLISECONDS);
-                if (batch == null) {
-                    flushStripes();
-                } else {
-                    writeBatch(batch, byteBuffer);
+            while (state == STARTED) {
+                if (!writeThreads(false)) {
+                    LockSupport.parkNanos(flushIntervalNanos);
+                    if (!writeThreads(false)) {
+                        writeThreads(true);
+                        flushOutput();
+                    }
                 }
             }
 
-            writePending(byteBuffer);
-            flushStripes();
-            writePending(byteBuffer);
-
+            writeThreads(true);
+            flushOutput();
             if (fileChannel.isOpen()) {
                 fileChannel.force(false);
             }
         } catch (IOException e) {
             System.err.println("Writer error: " + e.getMessage());
             e.printStackTrace();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         }
     }
 
-    private static void writePending(ByteBuffer byteBuffer) throws IOException {
-        for (int pending = queue.size(); pending > 0; pending--) {
-            writeBatch(queue.poll(), byteBuffer);
-        }
-    }
-
-    private static void writeBatch(List<LogEntry> batch, ByteBuffer byteBuffer) throws IOException {
-        for (LogEntry entry : batch) {
-            int len = formatEntryToBytes(entry);
-            if (byteBuffer.remaining() < len) {
-                byteBuffer.flip();
-                writeFully(byteBuffer);
-                byteBuffer.clear();
+    private static boolean writeThreads(boolean partial) throws IOException {
+        boolean consumedFullChunk = false;
+        for (Iterator<ThreadTrace> iterator = threads.iterator(); iterator.hasNext();) {
+            ThreadTrace trace = iterator.next();
+            boolean alive = trace.owner.isAlive();
+            Chunk chunk = trace.head;
+            while (true) {
+                Chunk next = chunk.next;
+                if (next == null && !partial) {
+                    break;
+                }
+                int size = chunk.size();
+                if (chunk.written < size) {
+                    writeEvents(trace, chunk, size);
+                }
+                if (next == null) {
+                    break;
+                }
+                pendingChunks.decrementAndGet();
+                reuse(chunk);
+                chunk = next;
+                trace.head = chunk;
+                consumedFullChunk = true;
             }
-            if (byteBuffer.remaining() < len) {
-                writeFully(ByteBuffer.wrap(scratch, 0, len));
-            } else {
-                byteBuffer.put(scratch, 0, len);
+
+            if (!alive && partial) {
+                iterator.remove();
+                droppedEvents.addAndGet(trace.dropped.get());
+                reuse(chunk);
             }
         }
-
-        byteBuffer.flip();
-        writeFully(byteBuffer);
-        byteBuffer.clear();
+        return consumedFullChunk;
     }
 
-    private static void writeFully(ByteBuffer byteBuffer) throws IOException {
+    private static void reuse(Chunk chunk) {
+        if (chunk.capacity() == batchSize) {
+            chunk.count.set(chunk.countIndex, 0);
+            chunk.written = 0;
+            chunk.next = null;
+            pool.offer(chunk);
+        }
+    }
+
+    private static void writeEvents(ThreadTrace trace, Chunk chunk, int size) throws IOException {
+        if (trace.prefix == null) {
+            trace.prefix = ("[" + processId + "][" + trace.threadId + "] \"").getBytes(StandardCharsets.UTF_8);
+        }
+        byte[] prefix = trace.prefix;
+        long[] events = chunk.events;
+
+        for (int i = chunk.written; i < size; i++) {
+            long event = events[i * 2 + 1];
+            byte[] signature = signatureBytes((int) (event >>> 1));
+            int maxLength = MAX_ENTRY_OVERHEAD + prefix.length + signature.length;
+            if (outputPosition + maxLength > output.length) {
+                flushOutput();
+                if (maxLength > output.length) {
+                    output = new byte[maxLength];
+                }
+            }
+
+            byte[] buffer = output;
+            int pos = outputPosition;
+            buffer[pos++] = '[';
+            pos = writeTimestamp(optimizeTimestamp ? events[i * 2] - Time.OPTIMIZED_OFFSET : events[i * 2], buffer, pos);
+            buffer[pos++] = ']';
+            buffer[pos++] = ' ';
+            buffer[pos++] = (event & 1) == 0 ? (byte) 'S' : (byte) 'E';
+            buffer[pos++] = ' ';
+            System.arraycopy(prefix, 0, buffer, pos, prefix.length);
+            pos += prefix.length;
+            System.arraycopy(signature, 0, buffer, pos, signature.length);
+            pos += signature.length;
+            buffer[pos++] = '"';
+            buffer[pos++] = '\n';
+            outputPosition = pos;
+        }
+        chunk.written = size;
+    }
+
+    private static void flushOutput() throws IOException {
+        ByteBuffer byteBuffer = ByteBuffer.wrap(output, 0, outputPosition);
         while (byteBuffer.hasRemaining()) {
             fileChannel.write(byteBuffer);
         }
+        outputPosition = 0;
     }
 
-    private static void flushStripes() {
-        for (Stripe stripe : stripes) {
-            synchronized (stripe) {
-                if (!stripe.entries.isEmpty() && queue.offer(stripe.entries)) {
-                    stripe.entries = new ArrayList<>(BATCH_SIZE);
-                }
-            }
+    private static int writeTimestamp(long timestamp, byte[] buffer, int pos) {
+        long seconds = timestamp / 1_000_000_000L;
+        if (seconds <= 0) {
+            return writeLong(timestamp, buffer, pos);
         }
-    }
-
-    private static int formatEntryToBytes(LogEntry entry) {
-        byte[] sigBytes;
-        if (useHash) {
-            sigBytes = getMethodHashBytes(entry.methodSig);
-        } else {
-            sigBytes = getMethodSigBytes(entry.methodSig);
+        if (seconds != cachedSeconds) {
+            cachedSeconds = seconds;
+            cachedSecondsLength = writeLong(seconds, cachedSecondsDigits, 0);
         }
+        System.arraycopy(cachedSecondsDigits, 0, buffer, pos, cachedSecondsLength);
+        pos += cachedSecondsLength;
 
-        int maxLength = MAX_ENTRY_OVERHEAD + processIdBytes.length + sigBytes.length;
-        if (scratch.length < maxLength) {
-            scratch = new byte[maxLength];
+        int nanos = (int) (timestamp - seconds * 1_000_000_000L);
+        int end = pos + 9;
+        for (int i = end; i > pos + 1; i -= 2) {
+            int pair = nanos % 100 * 2;
+            nanos /= 100;
+            buffer[i - 1] = DIGITS[pair + 1];
+            buffer[i - 2] = DIGITS[pair];
         }
-        byte[] buffer = scratch;
-        int pos = 0;
-
-        // [
-        buffer[pos++] = '[';
-
-        // timestamp
-        long ts = entry.timestamp;
-        if (optimizeTimestamp) {
-            ts = ts - Time.OPTIMIZED_OFFSET;
-        }
-        pos = writeLong(ts, buffer, pos);
-
-        // ]
-        buffer[pos++] = ']';
-        buffer[pos++] = ' ';
-
-        // S or E
-        buffer[pos++] = entry.type == 0 ? (byte) 'S' : (byte) 'E';
-        buffer[pos++] = ' ';
-
-        // [processId]
-        buffer[pos++] = '[';
-        System.arraycopy(processIdBytes, 0, buffer, pos, processIdBytes.length);
-        pos += processIdBytes.length;
-        buffer[pos++] = ']';
-
-        // [threadId]
-        buffer[pos++] = '[';
-        pos = writeLong(entry.threadId, buffer, pos);
-        buffer[pos++] = ']';
-        buffer[pos++] = ' ';
-
-        // method signature or hash
-        buffer[pos++] = '"';
-        System.arraycopy(sigBytes, 0, buffer, pos, sigBytes.length);
-        pos += sigBytes.length;
-        buffer[pos++] = '"';
-
-        // newline
-        buffer[pos++] = '\n';
-
-        return pos;
+        buffer[pos] = (byte) ('0' + nanos);
+        return end;
     }
 
     private static int writeLong(long value, byte[] buffer, int pos) {
-        if (value == 0) {
-            buffer[pos++] = '0';
-            return pos;
-        }
-
         if (value < 0) {
             buffer[pos++] = '-';
             value = -value;
         }
 
-        long temp = value;
-        while (temp > 0) {
-            temp /= 10;
-            pos++;
+        int length = 1;
+        for (long limit = 10; length < 19 && value >= limit; limit *= 10) {
+            length++;
         }
 
-        int end = pos - 1;
-        while (value > 0) {
-            buffer[end--] = (byte) ('0' + (value % 10));
-            value /= 10;
+        int end = pos + length;
+        int i = end;
+        while (value >= 100) {
+            int pair = (int) (value % 100) * 2;
+            value /= 100;
+            buffer[--i] = DIGITS[pair + 1];
+            buffer[--i] = DIGITS[pair];
         }
+        if (value >= 10) {
+            buffer[--i] = DIGITS[(int) value * 2 + 1];
+            buffer[--i] = DIGITS[(int) value * 2];
+        } else {
+            buffer[--i] = (byte) ('0' + value);
+        }
+        return end;
+    }
 
-        return pos;
+    private static byte[] signatureBytes(int methodId) {
+        if (methodId >= signatureBytes.length) {
+            signatureBytes = Arrays.copyOf(signatureBytes, Math.max(methodId + 1, signatureBytes.length * 2));
+        }
+        byte[] bytes = signatureBytes[methodId];
+        if (bytes == null) {
+            String signature = MethodRegistry.name(methodId);
+            if (useHash) {
+                bytes = generateHash(hashCounter++).getBytes(StandardCharsets.UTF_8);
+                methodSignatureToHashBytes.put(signature, bytes);
+            } else {
+                bytes = signature.getBytes(StandardCharsets.UTF_8);
+            }
+            signatureBytes[methodId] = bytes;
+        }
+        return bytes;
     }
 
     private static String generateHash(int number) {
@@ -283,18 +378,6 @@ public class FastAsyncLogger {
             number = number / ALPHABET_SIZE - 1;
         }
         return hash.toString();
-    }
-
-    private static byte[] getMethodHashBytes(String methodSignature) {
-        return methodSignatureToHashBytes.computeIfAbsent(methodSignature, key -> {
-            String hash = generateHash(counter.getAndIncrement());
-            return hash.getBytes(StandardCharsets.UTF_8);
-        });
-    }
-
-    private static byte[] getMethodSigBytes(String methodSignature) {
-        return methodSignatureToBytes.computeIfAbsent(methodSignature,
-                key -> key.getBytes(StandardCharsets.UTF_8));
     }
 
     public static Map<String, String> getMethodSignaturesByHash() {
@@ -338,11 +421,12 @@ public class FastAsyncLogger {
     }
 
     public static synchronized boolean close() {
-        stopped = true;
-        if (!started) {
+        if (state != STARTED) {
+            state = STOPPED;
             return false;
         }
-        queue.offer(Collections.emptyList());
+        state = STOPPED;
+        LockSupport.unpark(writerThread);
 
         try {
             writerThread.join();
@@ -369,6 +453,10 @@ public class FastAsyncLogger {
             e.printStackTrace();
         }
 
+        for (ThreadTrace trace : threads) {
+            droppedEvents.addAndGet(trace.dropped.get());
+        }
+        threads.clear();
         if (droppedEvents.get() > 0) {
             System.err.println("Dropped " + droppedEvents.get() + " trace events because the writer could not keep up");
         }
