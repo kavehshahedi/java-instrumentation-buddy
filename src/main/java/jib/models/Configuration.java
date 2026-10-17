@@ -40,14 +40,6 @@ public class Configuration {
         this.instrumentation = instrumentation != null ? instrumentation : new Instrumentation();
     }
 
-    @Override
-    public String toString() {
-        return "Instrumentation Configuration:" + 
-        "\n\tLogging:\n" + logging.toString() +
-        "\n\tInstrumentation:\n" + instrumentation.toString() +
-        "\n\tMisc:\n" + misc.toString();
-    }
-
     public static class Logging {
         private String file = DEFAULT_LOG_FILE;
         private boolean addTimestampToFileNames = false;
@@ -148,18 +140,6 @@ public class Configuration {
         public void setBufferSize(int bufferSize) {
             this.bufferSize = bufferSize > 0 ? bufferSize : 2 * 1024 * 1024;
         }
-
-        @Override
-        public String toString() {
-            return "\t\tFile: " + file +
-            "\n\t\tAdd Timestamp To File Names: " + addTimestampToFileNames +
-            "\n\t\tUse Hash: " + useHash + 
-            "\n\t\tOptimize Timestamp: " + optimizeTimestamp +
-            "\n\t\tBatch Size: " + batchSize +
-            "\n\t\tQueue Depth: " + queueDepth +
-            "\n\t\tFlush Interval Ms: " + flushIntervalMs +
-            "\n\t\tBuffer Size: " + bufferSize;
-        }
     }
 
     public static class Instrumentation {
@@ -209,15 +189,6 @@ public class Configuration {
         public void setMaxNumberOfInstrumentations(int maxNumberOfInstrumentations) {
             this.maxNumberOfInstrumentations = maxNumberOfInstrumentations;
         }
-
-        @Override
-        public String toString() {
-            return "\t\tTarget Package: " + targetPackage +
-            "\n\t\tOnly Check Visited: " + onlyCheckVisited +
-            "\n\t\tInstrument Main Method: " + instrumentMainMethod +
-            "\n\t\tMax Number Of Instrumentations: " + (maxNumberOfInstrumentations == -1 ? "N/A" : maxNumberOfInstrumentations) +
-            "\n\t\tTarget Methods: " + targetMethods.toString();
-        }
     
         public static class TargetMethods {
             private List<String> instrument = Collections.emptyList(); // Default empty list
@@ -239,24 +210,6 @@ public class Configuration {
             public void setIgnore(List<String> ignore) {
                 this.ignore = ignore != null ? ignore : Collections.emptyList();
             }
-
-            @Override
-            public String toString() {
-                StringBuilder output = new StringBuilder();
-                output.append("\n\t\t\tInstrument:");
-                output.append(instrument.isEmpty() ? " *\n" : "\n");
-                for (String method : instrument) {
-                    output.append("\t\t\t\t- ").append(method).append("\n");
-                }
-
-                output.append("\t\t\tIgnore:");
-                output.append(ignore.isEmpty() ? " N/A\n" : "\n");
-                for (String method : ignore) {
-                    output.append("\t\t\t\t- ").append(method).append("\n");
-                }
-
-                return output.toString().trim();
-            }
         }
     }
 
@@ -270,11 +223,6 @@ public class Configuration {
 
         public void setConvertToJson(boolean convertToJson) {
             this.convertToJson = convertToJson;
-        }
-
-        @Override
-        public String toString() {
-            return "\t\tConvert To JSON: " + convertToJson;
         }
     }
 }

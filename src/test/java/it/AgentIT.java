@@ -31,7 +31,7 @@ class AgentIT {
 
     @Test
     void tracesEveryCallWithAMatchingExit() throws Exception {
-        run(dir, "logging:\n  file: trace.log\ninstrumentation:\n  targetPackage: it\nmisc:\n  convertToJson: true\n");
+        run(dir, "logging.file=trace.log\nmisc.convertToJson=true\n", ",instrumentation.targetPackage=it");
 
         List<String> events = Files.readAllLines(dir.resolve("trace.log"), StandardCharsets.UTF_8);
         Map<String, Deque<String>> stacks = new HashMap<>();
@@ -55,8 +55,8 @@ class AgentIT {
 
     @Test
     void badConfigurationNeverStopsTheApplication() throws Exception {
-        run(Files.createDirectory(dir.resolve("empty")), "");
-        String output = run(Files.createDirectory(dir.resolve("typo")), "instrumentation:\n  targetPackages: it\n");
+        run(Files.createDirectory(dir.resolve("empty")), "", "");
+        String output = run(Files.createDirectory(dir.resolve("typo")), "instrumentation.targetPackages=it\n", "");
 
         assertTrue(output.contains("the agent is disabled"), output);
         try (Stream<Path> files = Files.list(dir.resolve("typo"))) {
@@ -64,12 +64,12 @@ class AgentIT {
         }
     }
 
-    private static String run(Path workDir, String configuration) throws Exception {
-        Path config = Files.write(workDir.resolve("config.yaml"), configuration.getBytes(StandardCharsets.UTF_8));
+    private static String run(Path workDir, String configuration, String options) throws Exception {
+        Path config = Files.write(workDir.resolve("jib.properties"), configuration.getBytes(StandardCharsets.UTF_8));
         Path output = workDir.resolve("output.txt");
         String classes = Paths.get(Sample.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
         Process process = new ProcessBuilder(System.getProperty("jib.it.java"),
-                "-javaagent:" + System.getProperty("jib.agent") + "=config=" + config, "-cp", classes, Sample.class.getName())
+                "-javaagent:" + System.getProperty("jib.agent") + "=config=" + config + options, "-cp", classes, Sample.class.getName())
                 .directory(workDir.toFile()).redirectErrorStream(true).redirectOutput(output.toFile()).start();
 
         assertTrue(process.waitFor(60, TimeUnit.SECONDS));

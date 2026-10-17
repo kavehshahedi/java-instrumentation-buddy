@@ -42,91 +42,101 @@ You can attach the agent to your Java application when executing it. Here is a s
 # Running the program normally
 java [OPTIONS] -jar <program commands>
 
-# Attaching the agent to your program
-java [OPTIONS] -javaagent:path/to/the/jib.jar=<config=configuration.yaml> -jar <program commands>
+# Attaching the agent to your program with a configuration file
+java [OPTIONS] -javaagent:path/to/the/jib.jar=config=configuration.properties -jar <program commands>
+
+# Or passing the options directly
+java [OPTIONS] -javaagent:path/to/the/jib.jar=instrumentation.targetPackage=com.example,logging.file=trace.log -jar <program commands>
 ```
 
-Without a configuration file, the agent uses the default values described below. An empty configuration file also uses the default values. If the configuration file cannot be read or contains an unknown option, the agent prints an error and stays disabled, and the application runs normally.
+Both can be combined, and options passed directly override the ones of the configuration file (e.g., `config=configuration.properties,logging.file=other.log`). Since the agent needs no file this way, it can also be enabled through the `JAVA_TOOL_OPTIONS` environment variable without changing the command of the application:
+
+```console
+export JAVA_TOOL_OPTIONS="-javaagent:path/to/the/jib.jar=instrumentation.targetPackage=com.example"
+```
+
+Every JVM started with this variable loads the agent, and the JVM prints a `Picked up JAVA_TOOL_OPTIONS` line when it starts.
+
+Without any option, the agent uses the default values described below. An empty configuration file also uses the default values. If the configuration file cannot be read, or an option is unknown or has an invalid value, the agent prints an error and stays disabled, and the application runs normally.
 
 ### Attaching to a Running JVM
 
 You can also load the agent into a JVM that is already running, using its process id:
 
 ```console
-java -jar path/to/the/jib.jar <pid> [configuration.yaml]
+java -jar path/to/the/jib.jar <pid> [configuration.properties]
 ```
 
 Classes that are already loaded are instrumented as well. Relative paths inside the configuration file (such as the log file) are resolved against the working directory of the target JVM. The launcher must run on a JDK, and the agent can only be loaded once per JVM. Starting with JDK 21, the target JVM prints a warning when an agent is loaded this way, and future JDK releases are expected to require starting the JVM with `-XX:+EnableDynamicAgentLoading` for it to work.
 
 ### Agent Configuration
 
-The agent configuration is specified in a YAML file. This file allows you to customize various aspects of the agent's behavior. Below are the available configuration options:
+The configuration file is a standard Java properties file, with one `key=value` option per line. Lines starting with `#` are comments, and a long value can continue on the next line by ending the line with `\`. A backslash starts an escape sequence in properties files, so write Windows paths with `/` or `\\` (e.g., `C:/traces/trace.log`). Options passed directly to the agent are separated by commas. Below are the available options:
 
 #### Logging
 
-The `logging` section controls how the agent generates log files:
+The `logging` options control how the agent generates log files:
 
-- `file`: Specifies the path to the log file where the agent will write its output. `%p` in the path is replaced by the process id, so that several JVMs can run with the same configuration. The file is created when the first event is logged, and an existing file with the same name is overwritten.
+- `logging.file`: Specifies the path to the log file where the agent will write its output. `%p` in the path is replaced by the process id, so that several JVMs can run with the same configuration. The file is created when the first event is logged, and an existing file with the same name is overwritten.
   - Default: `jib-%p.log`
 
-- `addTimestampToFileNames`: When set to `true`, adds a timestamp to the log file name, right before its extension (e.g., `trace_1792265583180000709.log`).
+- `logging.addTimestampToFileNames`: When set to `true`, adds a timestamp to the log file name, right before its extension (e.g., `trace_1792265583180000709.log`).
   - Default: `false`
 
-- `useHash`: If `true`, the agent uses hashing for method signatures in the log file. This is useful for reducing the size of the log file when there are a large number of method logs with long signatures. The mapping of the hashes is stored in the metadata file, and the JSON conversion writes the full signatures.
+- `logging.useHash`: If `true`, the agent uses hashing for method signatures in the log file. This is useful for reducing the size of the log file when there are a large number of method logs with long signatures. The mapping of the hashes is stored in the metadata file, and the JSON conversion writes the full signatures.
   - Default: `false`
 
-- `optimizeTimestamp`: When set to `true`, optimizes timestamp handling for improved performance. Basically, it removes the first 4 digits of the timestamp to reduce the log file size. The removed part is stored as `log_time_difference` in the metadata file.
+- `logging.optimizeTimestamp`: When set to `true`, optimizes timestamp handling for improved performance. Basically, it removes the first 4 digits of the timestamp to reduce the log file size. The removed part is stored as `log_time_difference` in the metadata file.
   - Default: `false`
 
-- `batchSize`: Specifies the number of log entries to batch together before writing to the queue. Each thread logs into one of a fixed set of buffers (about one per CPU), so the memory used grows with this value. Larger values can improve throughput but may increase memory usage and latency.
+- `logging.batchSize`: Specifies the number of log entries to batch together before writing to the queue. Each thread logs into one of a fixed set of buffers (about one per CPU), so the memory used grows with this value. Larger values can improve throughput but may increase memory usage and latency.
   - Default: `4096`
 
-- `queueDepth`: Sets the maximum number of batches that can be queued for writing. This acts as a buffer between log generation and disk I/O. When the queue is full, new batches are dropped instead of slowing down the application, and the number of dropped events is printed at exit and stored as `dropped_events` in the metadata file. Increase this value if you experience dropped logs under high load.
+- `logging.queueDepth`: Sets the maximum number of batches that can be queued for writing. This acts as a buffer between log generation and disk I/O. When the queue is full, new batches are dropped instead of slowing down the application, and the number of dropped events is printed at exit and stored as `dropped_events` in the metadata file. Increase this value if you experience dropped logs under high load.
   - Default: `64`
 
-- `flushIntervalMs`: Controls how long (in milliseconds) the logger waits for a full batch before writing partially filled batches. Lower values reduce latency but may increase I/O overhead.
+- `logging.flushIntervalMs`: Controls how long (in milliseconds) the logger waits for a full batch before writing partially filled batches. Lower values reduce latency but may increase I/O overhead.
   - Default: `100`
 
-- `bufferSize`: Sets the size of the direct byte buffer used for writing log entries to disk (in bytes). Larger buffers can improve write performance but consume more memory.
+- `logging.bufferSize`: Sets the size of the direct byte buffer used for writing log entries to disk (in bytes). Larger buffers can improve write performance but consume more memory.
   - Default: `2097152` (2MB)
 
-When the application exits, the agent also writes a metadata file next to the log file, named after it with a `.json` extension (e.g., `trace.json` for `trace.log`). It contains the start and end times of the agent, the `log_time_difference` of `optimizeTimestamp`, the number of dropped events, and the mapping of the method hashes.
+When the application exits, the agent also writes a metadata file next to the log file, named after it with a `.json` extension (e.g., `trace.json` for `trace.log`). It contains the start and end times of the agent, the `log_time_difference` of `logging.optimizeTimestamp`, the number of dropped events, and the mapping of the method hashes.
 
 #### Instrumentation
 
-The `instrumentation` section defines which parts of your code the agent will instrument:
+The `instrumentation` options define which parts of your code the agent will instrument:
 
-- `targetPackage`: Specifies which package to instrument, including its subpackages. Use a comma-separated list to instrument several packages (e.g., `com.example.app, com.example.lib`).
+- `instrumentation.targetPackage`: Specifies which package to instrument, including its subpackages. Use a comma-separated list to instrument several packages (e.g., `com.example.app, com.example.lib`).
   - Default: `*` (all packages)
 
-- `onlyCheckVisited`: When set to `true`, the agent only logs the entry of each function the first time it runs. This is useful for checking code coverage.
+- `instrumentation.onlyCheckVisited`: When set to `true`, the agent only logs the entry of each function the first time it runs. This is useful for checking code coverage.
   - Default: `false`
 
-- `instrumentMainMethod`: If `true`, the agent will instrument the main method of the main class.
+- `instrumentation.instrumentMainMethod`: If `true`, the agent will instrument the main method of the main class.
   - Default: `false`
 
-- `maxNumberOfInstrumentations`: Sets a limit on the number of calls logged for each method. Use -1 for unlimited.
+- `instrumentation.maxNumberOfInstrumentations`: Sets a limit on the number of calls logged for each method. Use -1 for unlimited.
   - Default: `-1`
 
-- `targetMethods`: Allows you to specify which methods to instrument or ignore. This section has two sub-sections:
-  - `instrument`: A list of methods to instrument. If specified, only these methods will be instrumented.
-    - Example:
-      ```yaml
-      instrument:
-        - private static void com.example.MainClass.methodName(int a, java.lang.String b)
-      ```
-  - `ignore`: A list of methods to exclude from instrumentation. If specified, all methods except these will be instrumented.
-    - Example:
-      ```yaml
-      ignore:
-        - protected java.lang.String com.example.MainClass.ignoredMethodName(float a)
-      ```
+- `instrumentation.targetMethods.instrument`: A comma-separated list of methods to instrument. If specified, only these methods will be instrumented.
+  - Example:
+    ```properties
+    instrumentation.targetMethods.instrument=private static void com.example.MainClass.methodName(int a, java.lang.String b), \
+        public int com.example.MainClass.otherMethod()
+    ```
+
+- `instrumentation.targetMethods.ignore`: A comma-separated list of methods to exclude from instrumentation. If specified, all methods except these will be instrumented.
+  - Example:
+    ```properties
+    instrumentation.targetMethods.ignore=protected java.lang.String com.example.MainClass.ignoredMethodName(float a)
+    ```
 
 #### Misc
 
-The `misc` section contains additional configuration options:
+The `misc` options contain additional settings:
 
-- `convertToJson`: When set to `true`, converts the output logs to JSON format when the application exits, next to the log file (e.g., `trace.log.json` for `trace.log`). This format is supported by visualization tools like Eclipse Trace Compass.
+- `misc.convertToJson`: When set to `true`, converts the output logs to JSON format when the application exits, next to the log file (e.g., `trace.log.json` for `trace.log`). This format is supported by visualization tools like Eclipse Trace Compass.
   - Default: `false`
 
 ##### Method Structure
@@ -152,7 +162,7 @@ Where:
 - `method-name` is the name of the method (required)
 - `(args)` are the method's parameters, with fully qualified types (required)
 
-The return type and the parameter types are matched exactly, so overloaded methods can be told apart. Generic type arguments are ignored, and types are written as they appear in the trace (e.g., `com.example.Outer$Inner` for a nested class).
+The return type and the parameter types are matched exactly, so overloaded methods can be told apart. Generic type arguments are ignored, and types are written as they appear in the trace (e.g., `com.example.Outer$Inner` for a nested class). The commas inside the parentheses and the generic type arguments of a method do not separate the methods of the list.
 
 Examples:
 ```java
@@ -165,24 +175,42 @@ Note: You can specify either `instrument` or `ignore`, but not both since it doe
 
 Here's an example of a complete configuration file:
 
+```properties
+logging.file=trace.log
+logging.addTimestampToFileNames=true
+logging.useHash=true
+logging.optimizeTimestamp=true
+
+instrumentation.targetPackage=com.example
+instrumentation.onlyCheckVisited=false
+instrumentation.instrumentMainMethod=true
+instrumentation.maxNumberOfInstrumentations=1000
+instrumentation.targetMethods.instrument=private static void com.example.MainClass.methodName(int a, java.lang.String b)
+
+misc.convertToJson=true
+```
+
+#### Migrating from the YAML Configuration
+
+Versions of JIB before 1.5.0 read the configuration from a YAML file. Each YAML option becomes one key, made of its section names and its name joined by dots, and YAML lists become comma-separated values. For instance, this YAML configuration:
+
 ```yaml
 logging:
   file: trace.log
-  addTimestampToFileNames: true
-  useHash: true
-  optimizeTimestamp: true
-
 instrumentation:
   targetPackage: com.example
-  onlyCheckVisited: false
-  instrumentMainMethod: true
-  maxNumberOfInstrumentations: 1000
   targetMethods:
-    instrument:
-      - private static void com.example.MainClass.methodName(int a, java.lang.String b)
+    ignore:
+      - void com.example.Main.first()
+      - void com.example.Main.second()
+```
 
-misc:
-  convertToJson: true
+becomes:
+
+```properties
+logging.file=trace.log
+instrumentation.targetPackage=com.example
+instrumentation.targetMethods.ignore=void com.example.Main.first(), void com.example.Main.second()
 ```
 
 ## Example
@@ -235,16 +263,13 @@ public class Main {
 
 ### Full Instrumentation
 
-Suppose we want to instrument the program to log the entry and exit of each method. We can create a YAML configuration file to specify the methods to instrument and the logging options. For now, let's just instrument all the methods in the `com.example.pkg` package and log the output to a file.
+Suppose we want to instrument the program to log the entry and exit of each method. We can create a configuration file to specify the methods to instrument and the logging options. For now, let's just instrument all the methods in the `com.example.pkg` package and log the output to a file.
 
 #### Configuration File
     
-```yaml
-logging:
-    file: trace.log
-
-instrumentation:
-    targetPackage: com.example.pkg
+```properties
+logging.file=trace.log
+instrumentation.targetPackage=com.example.pkg
 ```
 
 After the instrumentation, the agent will store all the logs in a single file (i.e., `trace.log`). Each line shows a function entry or exit along with the S/E (start or end) time, the process and thread ids, and the function's signature. Exits caused by exceptions are logged as well.
@@ -272,16 +297,11 @@ Now, we may specify the methods to instrument or ignore in the configuration fil
 
 #### Configuration File
     
-```yaml
-logging:
-    file: trace.log
-
-instrumentation:
-    targetPackage: com.example.pkg
-    instrumentMainMethod: true
-    targetMethods:
-        instrument:
-            - public int com.example.pkg.Main.thirdMethod(int a, int b)
+```properties
+logging.file=trace.log
+instrumentation.targetPackage=com.example.pkg
+instrumentation.instrumentMainMethod=true
+instrumentation.targetMethods.instrument=public int com.example.pkg.Main.thirdMethod(int a, int b)
 ```
 
 After running the program with this configuration, the log file will only contain entries for the `main` and `thirdMethod` functions.
@@ -293,17 +313,14 @@ After running the program with this configuration, the log file will only contai
 ```
 
 ### Use Hashing for Method Signatures
-If you want to use hashing for method signatures in the log file, you can enable the `useHash` option in the configuration file. This option is useful when there are a large number of method logs with long signatures.
+If you want to use hashing for method signatures in the log file, you can enable the `logging.useHash` option in the configuration file. This option is useful when there are a large number of method logs with long signatures.
 
 #### Configuration File
     
-```yaml
-logging:
-    file: trace.log
-    useHash: true
-
-instrumentation:
-    targetPackage: com.example.pkg
+```properties
+logging.file=trace.log
+logging.useHash=true
+instrumentation.targetPackage=com.example.pkg
 ```
 
 After running the program with this configuration, the log file will contain hashed method signatures instead of the full method signatures. The mapping of the hashes will be stored in the metadata file.
@@ -348,7 +365,7 @@ There are several ways to analyze the logs generated by the agent. One common ap
 ### Analysis with Trace Compass
 *Background: [Eclipse Trace Compass™](https://eclipse.dev/tracecompass) is an open source application to solve performance and reliability issues by reading and analyzing logs or traces of a system. Its goal is to provide views, graphs, metrics, and more to help extract useful information from traces, in a way that is more user-friendly and informative than huge text dumps.*
 
-If you want to import the collected instrumentation logs in Trace Compass, you can use the `convertToJson` option in the configuration file to convert the output logs to JSON format. 
+If you want to import the collected instrumentation logs in Trace Compass, you can use the `misc.convertToJson` option in the configuration file to convert the output logs to JSON format. 
 
 **JSON Output Example:**
 ```json
