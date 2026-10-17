@@ -1,6 +1,5 @@
 package jib.helpers;
 
-import jib.JavaInstrumentationBuddy;
 import jib.models.Configuration;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
@@ -68,8 +67,7 @@ public class MethodMatcherHelper {
 
         // Exclude the agent class from instrumentation
         targetPackageMatcher = targetPackageMatcher
-                .and(ElementMatchers
-                        .not(ElementMatchers.nameStartsWith(JavaInstrumentationBuddy.class.getPackage().getName() + ".")));
+                .and(ElementMatchers.not(ElementMatchers.nameStartsWith("jib.")));
 
         return targetPackageMatcher;
     }

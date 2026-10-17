@@ -8,6 +8,7 @@ import jib.services.external.TraceConverter;
 import jib.utils.Time;
 
 public class AgentLifecycleManager {
+    private static Thread shutdownHook;
 
     private AgentLifecycleManager() {
     }
@@ -17,15 +18,22 @@ public class AgentLifecycleManager {
         registerShutdownHook(startTime, config);
     }
 
+    public static void stopTracking() {
+        if (Runtime.getRuntime().removeShutdownHook(shutdownHook)) {
+            shutdownHook.run();
+        }
+    }
+
     private static void registerShutdownHook(long startTime, Configuration config) {
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+        shutdownHook = new Thread(() -> {
             long endTime = Time.getTimeNanoSeconds();
 
             if (FastAsyncLogger.close()) {
                 saveAgentData(startTime, endTime, config);
                 convertLogFileToJson(config);
             }
-        }));
+        });
+        Runtime.getRuntime().addShutdownHook(shutdownHook);
     }
 
     private static void saveAgentData(long startTime, long endTime, Configuration config) {

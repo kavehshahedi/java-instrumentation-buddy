@@ -55,7 +55,7 @@ Both can be combined, and options passed directly override the ones of the confi
 export JAVA_TOOL_OPTIONS="-javaagent:path/to/the/jib.jar=instrumentation.targetPackage=com.example"
 ```
 
-Every JVM started with this variable loads the agent, and the JVM prints a `Picked up JAVA_TOOL_OPTIONS` line when it starts.
+Every JVM started with this variable loads the agent, and the JVM prints a `Picked up JAVA_TOOL_OPTIONS` line when it starts. To trace only your application, and not the build tools or other JVMs started from the same environment, set `misc.targetMainClass` (see below).
 
 Without any option, the agent uses the default values described below. An empty configuration file also uses the default values. If the configuration file cannot be read, or an option is unknown or has an invalid value, the agent prints an error and stays disabled, and the application runs normally.
 
@@ -68,6 +68,20 @@ java -jar path/to/the/jib.jar <pid> [configuration.properties]
 ```
 
 Classes that are already loaded are instrumented as well. Relative paths inside the configuration file (such as the log file) are resolved against the working directory of the target JVM. The launcher must run on a JDK, and the agent can only be loaded once per JVM. Starting with JDK 21, the target JVM prints a warning when an agent is loaded this way, and future JDK releases are expected to require starting the JVM with `-XX:+EnableDynamicAgentLoading` for it to work.
+
+To stop tracing without restarting the application, detach the agent:
+
+```console
+java -jar path/to/the/jib.jar <pid> detach
+```
+
+The agent restores the original code of the instrumented classes, and writes the log, metadata and JSON files right away instead of at exit. This works whether the agent was attached at runtime or started with `-javaagent`, so you can attach, trace for a while, and detach. Calls that are still running when the agent detaches only have their start in the log. Once detached, the agent cannot be loaded again in the same JVM.
+
+### Class Loaders and Application Servers
+
+The agent adds itself to the bootstrap class path, so that it can also trace classes of isolated class loaders, which do not delegate to the system class loader (e.g., plugin systems). Because of this, recent JDKs (e.g., 17, 21 and 25) print `Sharing is only supported for boot loader classes because bootstrap classpath has been appended` when the agent starts, and class data sharing then only applies to the classes of the JDK core. This does not happen in JVMs where `misc.targetMainClass` keeps the agent inactive.
+
+Module systems that only expose some packages of the bootstrap class path to their modules also need the `jib` packages to be exposed, such as `-Dorg.osgi.framework.bootdelegation=jib.*` for OSGi frameworks, or `-Djboss.modules.system.pkgs=jib` for JBoss Modules (e.g., WildFly).
 
 ### Agent Configuration
 
@@ -138,6 +152,9 @@ The `misc` options contain additional settings:
 
 - `misc.convertToJson`: When set to `true`, converts the output logs to JSON format when the application exits, next to the log file (e.g., `trace.log.json` for `trace.log`). This format is supported by visualization tools like Eclipse Trace Compass.
   - Default: `false`
+
+- `misc.targetMainClass`: A comma-separated list of main classes or jar files (e.g., `com.example.Main, app.jar`). When set, the agent is only enabled in JVMs that run one of them, and stays inactive in every other JVM without instrumenting anything. A jar file matches with or without its directory.
+  - Default: empty (every JVM)
 
 ##### Method Structure
 

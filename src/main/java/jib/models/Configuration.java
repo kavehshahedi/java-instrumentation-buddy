@@ -215,6 +215,7 @@ public class Configuration {
 
     public static class Misc {
         private boolean convertToJson = false;
+        private List<String> targetMainClass = Collections.emptyList();
 
         // Getters and setters
         public boolean isConvertToJson() {
@@ -223,6 +224,14 @@ public class Configuration {
 
         public void setConvertToJson(boolean convertToJson) {
             this.convertToJson = convertToJson;
+        }
+
+        public List<String> getTargetMainClass() {
+            return targetMainClass;
+        }
+
+        public void setTargetMainClass(List<String> targetMainClass) {
+            this.targetMainClass = targetMainClass != null ? targetMainClass : Collections.emptyList();
         }
     }
 }
